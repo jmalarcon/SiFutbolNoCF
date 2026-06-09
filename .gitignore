@@ -1,0 +1,166 @@
+## Ignore Visual Studio temporary files, build results, and user-specific files.
+
+# Obviar los builds y el archivo local para pruebas y de configuración local
+build/
+Properties/launchSettings.json
+!appsettings.json
+!appsettings.*.json
+appsettings.local.json
+
+# exclude App.config and Web.config from global xml ignore
+!App.config
+!Web.config
+
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userhtml
+*.spec
+*.sqlproj.user
+*.userprefs
+*.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Re]leases/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+[Bb]uild/
+
+# Visual Studio 2015/2017/2019/2022 cache directory
+.vs/
+# Generated files
+# (keep using standard .gitignore rules)
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# NUnit
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+
+# Rider
+.idea/
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+.history/
+.vscode-test/
+
+# Package usage log files
+project.fragment.lock.json
+project.lock.json
+project.assets.json
+
+# StyleCop history files
+StyleCop.Cache
+
+# Files built by Visual Studio
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_wpftmp.csproj
+*.log
+*.vspscc
+*.vsscc
+*.webinfo
+*.xml
+
+
+# NuGet Packages
+*.nupkg
+# NuGet Symbol Packages
+*.snupkg
+# The packages folder can be ignored because of Package Restore
+**/[Pp]ackages/*
+# except build/, which is used as an MSBuild target.
+!**/[Pp]ackages/build/
+
+# Windows image analyses cache
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Compiler Roslyn FBCS cache
+*.swp
+*~
+
+# Backup & temp files
+*~
+*.bak
+*.tmp
+
+
+# macOS specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon must end with two carriage returns
+Icon
+
+
+# Thumbnails
+._*
+
+# Files that might be created on a Mac folder
+.DocumentRevisions-V100
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on external AppKit applications
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux specific files
+# temporary files which can be created if a process still has a handle open of a deleted file
+.fuse_hidden*
+
+# KDE directory preferences
+.directory
+
+# Linux trash directory which may appear on any mounted device
+.Trash-*
+
+# .nfs files write-locked by an NFS client
+.nfs*

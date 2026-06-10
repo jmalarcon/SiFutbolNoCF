@@ -233,3 +233,4 @@ Este proyecto está bajo la Licencia **Apache 2.0**. Consulta el archivo `LICENS
 ## Posibles mejoras futuras
 
 - Añadir soporte para especificar clave de API y zona directamente en `appsettings.json` para cada dominio, permitiendo gestionar dominios de diferentes cuentas de Cloudflare.
+- Soporte para avisos por email cada vez que cambien de estado uno o varios dominios

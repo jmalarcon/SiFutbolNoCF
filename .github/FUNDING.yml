@@ -1,4 +1,4 @@
 # These are supported funding model platforms
 
-github: [jmalarcon]
-paypal: ['paypal.me/jmalarcon']
+github: jmalarcon
+custom: ["https://www.paypal.me/jmalarcon"]

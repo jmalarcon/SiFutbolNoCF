@@ -97,7 +97,7 @@ Los dominios se configuran siempre en `appsettings.json` o `appsettings.local.js
 - `name`: dominio raíz en Cloudflare (ej. `midominio.com`).
 - `record`: subdominio o registro DNS que se modificará (ej. `www`, `api`, o `@` para indicar el dominio raíz).
 - `type`: tipo de registro en la tabla DNS de Cloudflare (ej. `A`, `CNAME`, `AAAA`).
-- `CfZoneId` _(Opcional)_: el ID de zona asignado por Cloudflare. Si se deja vacío, el programa intentará resolverlo automáticamente consumiendo la API de zonas de Cloudflare.
+- `CfZoneId` _(Opcional)_: el ID de zona asignado por Cloudflare (lo puedes ver en la portada de tu dominio, a la derecha, abajo del todo). Si se deja vacío, el programa intentará resolverlo automáticamente consumiendo la API de zonas de Cloudflare, si has configurado una API de cuenta (pero si lo añades a mano te ahorras una llamada innecesaria a la API).
 
 #### Ejemplo de `appsettings.json`:
 ```json
@@ -206,10 +206,10 @@ Si tu sitio web es legítimo y se ve afectado colateralmente por bloqueos de ran
 Sí. El programa únicamente interactúa con tu propia cuenta de Cloudflare a través de su API pública para modificar registros de DNS que te pertenecen legalmente. No ataca ni modifica sistemas ajenos. Solo te evita un problema.
 
 ### ¿Puedo monitorizar varios dominios?
-Sí. La sección `Domains` de la configuración admite un número ilimitado de dominios y subdominios. Cada uno será evaluado de forma individual contra el servicio de estado y actualizado de forma independiente. Eso sí, dado que la clve de API es para una cuenta de CloudFlare determinada, todos los dominios deberian estar bajo esa misma cuenta (o al menos la API debería tener permisos para gestionarlos).
+Sí. La sección `Domains` de la configuración admite un número ilimitado de dominios y subdominios. Cada uno será evaluado de forma individual contra el servicio de estado y actualizado de forma independiente. Eso sí, dado que la clve de API es para una cuenta de CloudFlare determinada, todos los dominios deberían estar bajo esa misma cuenta (o al menos la API debería tener permisos para gestionarlos).
 
 ### ¿Qué pasa si se cae hayahora.futbol?
-Si el endpoint del estado de bloqueo no responde o devuelve un JSON no válido, el programa mostrará una advertencia en la consola omitiendo el dominio problemático y continuará procesando el resto de la lista. En el siguiente ciclo volverá a reintentar la conexión.
+Si el _endpoint_ del estado de bloqueo no responde o devuelve un JSON no válido, el programa mostrará una advertencia en la consola omitiendo el dominio problemático y continuará procesando el resto de la lista. En el siguiente ciclo volverá a reintentar la conexión.
 
 ### ¿Cómo puedo probar si funciona?
 1. Puedes forzar la conmutación manual utilizando el modo de ejecución única (*one-off*) pasando los 6 argumentos necesarios. Por ejemplo, desactivando el proxy:
@@ -225,6 +225,7 @@ Si el endpoint del estado de bloqueo no responde o devuelve un JSON no válido, 
 - **Reporta Bugs o sugiere ideas**: abre una [Issue](https://github.com/jmalarcon/SiFutbolNoCF/issues) describiendo la situación.
 - **Envía mejoras de código**: haz un _Fork_ del proyecto, realiza tus cambios en una rama específica y abre un _Pull Request_.
 - **Apoya el proyecto**: dale una ⭐ estrella al repositorio y compártelo con otras personas que puedan necesitar esta solución.
+- **Dona para apoyar mi tiempo**: ya sé que esto casi nadie lo hace pero, si esta aplicación te soluciona un problema gordo (tu web no disponible y no puedes facturar o atender a tus clientes), puedes donarme algo para apoyar el desarrollo 😉 En el lateral de este repositorio encontrarás los botones para donar directamente a través de GitHub o mediante PayPal. ¡Gracias!
 
 ## Licencia
 
@@ -233,4 +234,4 @@ Este proyecto está bajo la Licencia **Apache 2.0**. Consulta el archivo `LICENS
 ## Posibles mejoras futuras
 
 - Añadir soporte para especificar clave de API y zona directamente en `appsettings.json` para cada dominio, permitiendo gestionar dominios de diferentes cuentas de Cloudflare.
-- Soporte para avisos por email cada vez que cambien de estado uno o varios dominios
+- Soporte para avisos por email o Telegram cada vez que cambien de estado uno o varios dominios

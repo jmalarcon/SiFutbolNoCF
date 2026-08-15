@@ -62,8 +62,9 @@ Si estás ejecutando la aplicación en modo demonio permanente (por ejemplo, en 
 > El operador `>>` añade los logs al final del archivo, `2> /dev/tty` envía errores a la terminal, y el `&` final envía el proceso a segundo plano.
 
 > [!IMPORTANT]
-> Para poder ejecutarlo en Mac tendrás que otorgarle permisos de ejecución con `chmod +x SiFutbolNoCF`. La primera vez que lo ejecutes, al ser un programa descaargado de internet, tendrás que autorizar su ejecución desde los ajustes de seguridad del sistema.
-
+> Para poder ejecutarlo **en Mac** tendrás que otorgarle **permisos de ejecución** con `chmod +x SiFutbolNoCF`. Además, **la primera vez** que lo ejecutes, al ser un programa descaargado de internet, tendrás que **autorizar su ejecución** desde los ajustes de seguridad del sistema:
+>
+>![El ajuste que debes marcar](imgs/macos-ajustes-seguridad.webp)
 
 **En Windows (PowerShell):**
 

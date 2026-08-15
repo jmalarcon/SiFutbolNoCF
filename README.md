@@ -30,7 +30,7 @@ Este programa consulta constantemente el _endpoint_ facilitado por los amigos de
 
 ### 1. Configurar token de API de tipo Perfil (Específico de Zona)
 Si prefieres restringir los permisos de tu API Token en Cloudflare por seguridad, puedes crear un token limitado a una sola zona específica.
-- Ve a tu consola de `Cloudflare > My Profile > API Tokens` ([enlace directo](https://dash.cloudflare.com/profile/settings)).
+- Ve a tu consola de `Cloudflare > My Profile > API Tokens` ([enlace directo](https://dash.cloudflare.com/profile/api-tokens)).
 - Crea un token personalizado con el permiso `Zone - DNS - Edit`.
 - En `Zone Resources`, selecciona `Specific zone` y elige el dominio o dominios deseados.
 

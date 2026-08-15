@@ -226,7 +226,10 @@ Si el _endpoint_ del estado de bloqueo no responde o devuelve un JSON no válido
 - **Reporta Bugs o sugiere ideas**: abre una [Issue](https://github.com/jmalarcon/SiFutbolNoCF/issues) describiendo la situación.
 - **Envía mejoras de código**: haz un _Fork_ del proyecto, realiza tus cambios en una rama específica y abre un _Pull Request_.
 - **Apoya el proyecto**: dale una ⭐ estrella al repositorio y compártelo con otras personas que puedan necesitar esta solución.
-- **Dona para apoyar mi tiempo**: ya sé que esto casi nadie lo hace pero, si esta aplicación te soluciona un problema gordo (tu web no disponible y no puedes facturar o atender a tus clientes), puedes donarme algo para apoyar el desarrollo 😉 En el lateral de este repositorio encontrarás los botones para donar directamente a través de GitHub o mediante PayPal. ¡Gracias!
+- **Dona para apoyar mi tiempo**: ya sé que esto casi nadie lo hace pero, si esta aplicación te soluciona un problema gordo (tu web no disponible y no puedes facturar o atender a tus clientes), puedes donarme algo para apoyar el desarrollo 😉 En el lateral de este repositorio encontrarás los botones para donar directamente a través de GitHub o mediante PayPal, donde pone "Sponsor this project". ¡Gracias!
+
+  - [**Mecenazgo en GitHub**](https://github.com/sponsors/jmalarcon)
+  - [**Donar en PayPal**](https://www.paypal.me/jmalarcon)
 
 ## Licencia
 

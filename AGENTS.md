@@ -9,9 +9,11 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
 **SiFutbolNoCF** es una herramienta diseñada para mitigar de forma automatizada los **bloqueos dinámicos** que los proveedores de servicios de Internet (ISP) aplican en España a las direcciones IP de Cloudflare durante la emisión de eventos deportivos de pago.
 
 ### Mecanismo de Funcionamiento
-1. Consulta periódicamente el *endpoint* de estado (`https://hayahora.futbol/status.json`) para verificar si los dominios monitoreados están bloqueados.
-2. **Si hay bloqueo (`ok: false`)**: Desactiva de inmediato el *proxy* de Cloudflare (cambia la "nube naranja" a "nube gris"), exponiendo temporalmente la IP original del servidor para que el tráfico no pase por Cloudflare ni sea bloqueado.
-3. **Cuando termina el bloqueo (`ok: true`)**: Reactiva el *proxy* de Cloudflare (vuelve la "nube naranja") para restaurar la protección, CDN y certificados de Cloudflare.
+1. Consulta periódicamente el *endpoint* oficial de estado (`https://hayahora.futbol/estado/data.json`) para obtener el conjunto de direcciones IP bloqueadas activamente por los operadores en España (evaluando el último cambio de estado registrado en `stateChanges`).
+2. **Resolución DNS y Detección**: Resuelve las IPs públicas del dominio monitoreado (registros A, AAAA o CNAMEs) mediante `System.Net.Dns.GetHostAddressesAsync`.
+3. **Persistencia de IPs de Cloudflare**: Almacena las IPs conocidas de Cloudflare en `.sifutbolnocf.cache.json` para conservarlas incluso cuando el proxy esté desactivado o tras reinicios del proceso.
+4. **Si hay bloqueo**: Si alguna de las IPs de Cloudflare del dominio está bloqueada, desactiva de inmediato el *proxy* de Cloudflare (cambia la "nube naranja" a "nube gris"), exponiendo temporalmente la IP original del servidor.
+5. **Cuando termina el bloqueo**: Si las IPs de Cloudflare ya no aparecen bloqueadas en el *endpoint*, reactiva el *proxy* de Cloudflare (vuelve la "nube naranja") para restaurar la protección CDN y certificados.
 
 ---
 
@@ -22,10 +24,19 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
 - **Compilación Multiplataforma**: Generación de binarios autónomos de un solo archivo (*single-file self-contained*) para Windows, Linux y macOS (arquitecturas `x64` y `arm64`).
 
 ### Estructura del Código
-- [`Program.cs`](Program.cs): Punto de entrada, enrutamiento de argumentos CLI, lógica del modo demonio/one-off, llamadas HTTP hacia la API de Cloudflare y la API de estado, e interfaz visual en consola.
-- [`ConfigurationManager.cs`](ConfigurationManager.cs): Gestión y resolución de la configuración combinando archivos JSON y variables de entorno.
+- [`Program.cs`](Program.cs): Punto de entrada, procesamiento de argumentos CLI, interfaz en consola y orquestación de servicios.
+- **`Models/`**: Modelos de datos del sistema:
+  - [`AppSettings.cs`](Models/AppSettings.cs): Modelos de configuración (`AppSettings`, `DomainConfig`).
+  - [`CloudflareModels.cs`](Models/CloudflareModels.cs): Modelos de respuesta de la API de Cloudflare (`CloudflareResponse`, `DnsRecord`, etc.).
+- **`Services/`**: Servicios especializados con responsabilidad única:
+  - [`ConfigurationManager.cs`](Services/ConfigurationManager.cs): Gestión y resolución de la configuración combinando archivos JSON y variables de entorno.
+  - [`CloudflareService.cs`](Services/CloudflareService.cs): Operaciones con la API v4 de Cloudflare (búsqueda de zonas, consulta y actualización de registros DNS).
+  - [`FootballStatusService.cs`](Services/FootballStatusService.cs): Descarga del endpoint `data.json` y extracción de IPs bloqueadas con `JsonDocument`.
+  - [`DnsResolverService.cs`](Services/DnsResolverService.cs): Resolución DNS recursiva de hostnames a IPs.
+  - [`IpCacheService.cs`](Services/IpCacheService.cs): Persistencia y gestión de la caché local de IPs en `.sifutbolnocf.cache.json`.
 - [`SiFutbolNoCF.csproj`](SiFutbolNoCF.csproj): Definición del proyecto, propiedades de compilación y recursos embebidos.
-- [`build.bat`](build.bat): Script para compilación y empaquetado desatendido en todas las plataformas soportadas hacia `./build/<plataforma>`.
+- [`build.bat`](build.bat): Script Batch (Windows) para compilación y empaquetado desatendido en todas las plataformas soportadas hacia `./build/<plataforma>`.
+- [`build.sh`](build.sh): Script Bash (Linux/macOS) para compilación y empaquetado desatendido en todas las plataformas soportadas hacia `./build/<plataforma>`.
 - [`appsettings.json`](appsettings.json): Plantilla base de configuración para distribución.
 
 ---
@@ -49,7 +60,7 @@ La aplicación carga los archivos JSON directamente desde su directorio base de 
 
 ---
 
-## 4. Reglas Generales de Actuación para Agentes
+## 4. Reglas Generales de Actuación para Agentes IA
 
 Cualquier cambio o adición de código debe adherirse rigurosamente a las siguientes directrices:
 
@@ -65,6 +76,8 @@ Cualquier cambio o adición de código debe adherirse rigurosamente a las siguie
 - Mantener un código de alta calidad: evitar código descuidado, ineficiente o asignaciones superfluas.
 - Reutilizar instancias costosas (por ejemplo, mantener la instancia estática única de `HttpClient` con tiempos de espera configurados).
 - Gestión rigurosa y preventiva de excepciones y validaciones de datos para evitar caídas imprevistas del bucle de monitorización.
+- Evitar *code smells* y prácticas de programación que puedan generar deuda técnica o dificultar la mantenibilidad futura.
+- El código que generes debe tener comentadas todas las líneas no triviales explicando qué hacen y por qué. Los comentarios deben ser claros, concisos y en español.
 
 ### 4.3. Multiplataforma Estricto
 - Queda prohibido el uso de llamadas a APIs nativas del sistema operativo (P/Invoke) o dependencias específicas de Windows que impidan la portabilidad.
@@ -76,6 +89,7 @@ Cualquier cambio o adición de código debe adherirse rigurosamente a las siguie
 ### 4.5. Seguridad y Gestión de Secretos
 - Nunca incorporar claves de API, tokens o IDs de zona reales en el código fuente ni en `appsettings.json`.
 - Respetar el aislamiento de `appsettings.local.json` asegurando que no se compile en el output (`CopyToOutputDirectory: Never`) ni se incluya en el control de versiones.
+- Si ejecutas el código con dominios reales y cambias el estado del proxy de Cloudflare, asegúrate de volver a cambiarlo expresamente al estado anterior para dejar la prueba limpia y no afectar la disponibilidad del dominio. Puedes usar la ejecución directa con `--once`.
 
 ### 4.6. Idioma, Documentación y Salida por Consola
 - Todo el código (nombres de variables cuando aplique, comentarios de código y documentación XML `<summary>`) debe redactarse en **español**.
@@ -85,6 +99,31 @@ Cualquier cambio o adición de código debe adherirse rigurosamente a las siguie
   - **Emojis descriptivos con soporte UTF-8 (`Console.OutputEncoding = Encoding.UTF8`)**: `🔍`, `✅`, `❌`, `⚠️`, `⏳`, `🔒`, `🔓`, `🔴`, `👀`, `ℹ️`.
   - **Mensajes concisos y directos**, evitando redundancias de nombres de dominio en las sub-ramas.
 
-## 5. Intrucciones adicionales
-- Siempre se debe ofrecer un plan de acción y aclarar todas las dudas importantes antes de tocar código, salvo que sea algo trivial o de pequeño impacto.
+### 4.7. Responsabilidad Única y Desacoplamiento de UI
+- Las clases y servicios de negocio (`Services/`, `Models/`) deben estar **totalmente desacoplados de la interfaz de usuario / consola**.
+- Ninguna clase de servicio debe contener llamadas directas a `Console.WriteLine`, `Console.Write` ni manipular la salida estándar.
+- Los servicios deben limitarse a realizar sus operaciones (HTTP, DNS, disco, parseo) y devolver datos o lanzar excepciones explicativas.
+- `Program.cs` es el **único responsable exclusivo** de gobernar la presentación visual, formatear mensajes, imprimir ramas jerárquicas y emitir emojis por consola.
+
+### 4.8. ETS
+Actúa como un redactor técnico experto en Español Técnico Simplificado. Para todas tus respuestas, aplica estrictamente las siguientes reglas de control de lenguaje:
+
+1. Estructura: Usa solo oraciones directas con la estructura (Sujeto + Verbo + Objeto). Evita oraciones subordinadas.
+2. Longitud: Cada oración debe tener un máximo de 15 palabras. Cada párrafo, un máximo de 3 oraciones.
+3. Verbos de acción: Prohíbe las perífrasis verbales. No escribas "proceder a realizar la limpieza", escribe "limpiar". Usa el imperativo directo para instrucciones.
+4. Elimina la ambigüedad: No uses el "se" impersonal (ej. No digas "se desconecta el cable", di "desconecte el cable").
+5. Vocabulario unívoco: Usa una sola palabra para cada concepto. Evita sinónimos. Prefiere palabras cortas y comunes (ej. Usa "usar" en lugar de "emplear" o "utilizar").
+6. Sin adornos: Elimina adverbios terminados en "-mente" y adjetivos calificativos innecesarios.
+
+Sigue los cuatro principios de Zinsser para una escritura de calidad:
+
+1. Sencillez
+2. Brevedad
+3. Claridad
+4. Humanidad
+
+Usa español de España con tuteo.
+
+### 4.9. Instrucciones adicionales
+- Siempre debes ofrecer un plan de acción y aclarar con el usuario todas las dudas importantes antes de tocar código, salvo que sea algo trivial o de pequeño impacto.
 - Despues de cada actuación relevante sobre el proyecto actualiza los archivos `AGENTS.md` (info desarrolladores y agentes IA) y `README.md` (info pública) para garantizar que tiene al día toda la información importante del proyecto.

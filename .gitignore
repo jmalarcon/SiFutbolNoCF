@@ -6,6 +6,7 @@ Properties/launchSettings.json
 !appsettings.json
 !appsettings.*.json
 appsettings.local.json
+.sifutbolnocf.cache.json
 
 # exclude App.config and Web.config from global xml ignore
 !App.config

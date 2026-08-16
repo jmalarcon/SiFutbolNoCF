@@ -11,9 +11,14 @@ En España, los ISP aplican bloqueos dinámicos en tiempo real a dominios que tr
 
 Puedes **leer los detalles [aquí](https://hayahora.futbol/#sobre-los-bloqueos)**.
 
-Este programa consulta constantemente el _endpoint_ facilitado por los amigos de https://hayahora.futbol/ para determinar si uno o varios dominios están bloqueados. En caso de detectarse un bloqueo de acceso a un dominio, la aplicación interactúa de manera inmediata con la API de Cloudflare para **desactivar el _proxy_ (queda la "nube gris")**, exponiendo directamente la dirección IP original del servidor y evitando el bloqueo de Cloudflare. Una vez finalizado el bloqueo (se termina el fútbol 🙄), la aplicación **reactiva el proxy (vuelve la "nube naranja")** para mantener protegida la IP de origen y asegurar el tráfico HTTPS.
+Este programa consulta constantemente el _endpoint_ oficial de estado facilitado por https://hayahora.futbol/ (`https://hayahora.futbol/estado/data.json`) para conocer qué direcciones IP están siendo bloqueadas por los operadores en España. A continuación, resuelve por DNS las IPs asignadas a cada dominio configurado (registros A, AAAA o CNAME). En caso de detectarse que alguna de las IPs de Cloudflare del dominio está bloqueada, la aplicación interactúa de manera inmediata con la API de Cloudflare para **desactivar el _proxy_ (queda la "nube gris")**, exponiendo directamente la dirección IP original del servidor y evitando el bloqueo. Una vez finalizado el bloqueo (se termina el fútbol 🙄 y la IP queda libre en el listado), la aplicación **reactiva el proxy (vuelve la "nube naranja")** para restaurar la protección de origen, CDN y HTTPS. Además, almacena localmente en disco una caché de las IPs de Cloudflare para mantener la persistencia ante reinicios inesperados o cortes de suministro eléctrico.
 
 >**IMPORTANTE**: si tu servidor web no tiene un certificado HTTPS propio asociado al dominio y solamente utiliza el de CloudFlare, me temo que esto no te servirá de nada porque hoy en día la mayoría de los navegadores modernos bloquean el acceso a sitios sin HTTPS o con certificados no válidos. En este caso, lo único que podrías hacer para que te sirva es configurar un certificado SSL gratuito de Let's Encrypt o similar en tu servidor para que, aunque el proxy esté desactivado, los usuarios puedan acceder sin problemas.
+
+> [!WARNING]
+> **Sobre la propagación y la caché DNS local**: los cambios en Cloudflare se aplican de forma inmediata en sus servidores autoritativos. Sin embargo, cualquier dispositivo que haya consultado tu dominio recientemente (por ejemplo, tu propio navegador, tu sistema operativo o el router de tu ISP) guardará la dirección IP anterior en su **caché DNS local** durante el tiempo de vida del registro (TTL, que suele ser de 300 segundos / 5 minutos).
+> 
+> Por este motivo, si estabas navegando por tu web justo antes del cambio, **tu ordenador puede tardar unos minutos en ver la nueva IP**. En cambio, **los visitantes nuevos o quienes no hayan entrado recientemente resolverán la IP actualizada de inmediato**. Para forzar la actualización instantánea en tu equipo de pruebas local, limpia la caché DNS de tu sistema operativo (`ipconfig /flushdns` en Windows, `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder` en macOS, o `resolvectl flush-caches` en Linux) o prueba desde una red distinta (por ejemplo, desde el móvil con datos móviles).
 
 ## Características
 
@@ -24,6 +29,7 @@ Este programa consulta constantemente el _endpoint_ facilitado por los amigos de
   - **Modo Ejecución Única (One-off)**: control total desde línea de comandos al proporcionar 6 argumentos para ejecuciones manuales rápidas.
 - 🔑 **Precedencia inteligente de configuración**: resuelve parámetros desde archivos locales (`appsettings.local.json`, para desarrollo y que no vaya nada fuera del repo si haces un _fork_), `appsettings.json` y variables de entorno de forma segura para evitar subir credenciales a repositorios públicos.
 - 🔍 **Auto-detección de Zonas de Cloudflare**: si no especificas el `CfZoneId`, el sistema lo buscará de manera autónoma utilizando la API de zonas de Cloudflare (para lo cual necesitarás un token de cuenta en vez de un token de perfil).
+- 🗄️ **Caché de IPs originales de CloudFlare** para los dominios para poder restaurar la configuración de proxy en caso de reinicios inesperados o cortes de suministro eléctrico.
 - 🎨 **Interfaz de Consola Clara y Jerárquica**: salida estructurada y legible con sangrado en 2 niveles y emojis descriptivos para que se adapte al color nativo de cualquier terminal (macOS, PowerShell, Linux, personalizados...) sin problemas de contraste.
 
 ## Cómo ponerlo en marcha
@@ -88,7 +94,7 @@ La aplicación busca y fusiona la configuración de varias fuentes con el siguie
 |---|---|---|---|
 | `CfApiToken` | String | Token de autenticación de Cloudflare (tipo portador / *Bearer*). | *(Requerido)* |
 | `IntervalSeconds` | Entero | Tiempo en segundos de espera entre ciclos en el modo continuo daemon. | `300` |
-| `StatusUrl` | String | Endpoint de consulta del estado de bloqueo de dominios. si cambiase en el futuro se podría modificar aquí. No es necesario ponerlo por defecto. | `https://hayahora.futbol/status.json` |
+| `StatusUrl` | String | Endpoint de consulta del estado de bloqueo de IPs. Si cambiase en el futuro se podría modificar aquí. No es necesario ponerlo por defecto. | `https://hayahora.futbol/estado/data.json` |
 | `Domains` | Lista | Array de objetos de dominios a monitorear y conmutar. | `[]` |
 
 ### Estructura de cada dominio bajo `Domains`:
@@ -105,7 +111,7 @@ Los dominios se configuran siempre en `appsettings.json` o `appsettings.local.js
 {
   "CfApiToken": "TU_CLOUDFLARE_API_TOKEN",
   "IntervalSeconds": 300,
-  "StatusUrl": "https://hayahora.futbol/status.json",
+  "StatusUrl": "https://hayahora.futbol/estado/data.json",
   "Domains": [
     {
       "name": "midominio.com",
@@ -184,20 +190,21 @@ El siguiente ejemplo muestra la salida estructurada de la consola cubriendo los 
 [2026-06-09 17:05:01] ✅ CONFIG │ ID de zona detectado para midominio.com: 9a5b7d6d5e4u3g2z1i0j
 
 [2026-06-09 17:05:03] Consultando el estado de los dominios...
+
    ├─ 👀 midominio.com
    ├─── ✅ Estado: no bloqueado. Estado activateCfProxy deseado: ACTIVAR.
    ├─── 🔍 Buscando midominio.com (tipo: A)
-   ├─── ℹ️ Sin cambios │ Ya está 🔒 (IP: 192.0.2.1)
+   ├─── ℹ️ Sin cambios │ Ya está 🔒 ON (IP: 192.0.2.1)
 
    ├─ 👀 tiendaonline.es
    ├─── 🔴 Estado: BLOQUEADO. Estado activateCfProxy deseado: DESACTIVAR.
    ├─── 🔍 Buscando tiendaonline.es (tipo: A)
-   ├─── ✅ Actualizado │ 🔒 → 🔓 (IP: 198.51.100.24)
+   ├─── ✅ Actualizado │ 🔒 ON → 🔓 OFF (IP: 198.51.100.24)
 
    ├─ 👀 blog.midominio.com
    ├─── ✅ Estado: no bloqueado. Estado activateCfProxy deseado: ACTIVAR.
    ├─── 🔍 Buscando blog.midominio.com (tipo: CNAME)
-   ├─── ✅ Actualizado │ 🔓 → 🔒 (IP: midominio.com)
+   ├─── ✅ Actualizado │ 🔓 OFF → 🔒 ON (IP: midominio.com)
 
    ├─ 👀 errortest.com
    ├─── 🔴 Estado: BLOQUEADO. Estado activateCfProxy deseado: DESACTIVAR.
@@ -232,6 +239,54 @@ Si el _endpoint_ del estado de bloqueo no responde o devuelve un JSON no válido
    ```
 2. Revisa tu panel de DNS en Cloudflare para constatar si la nube del registro correspondiente ha cambiado a color gris.
 
+## Cómo compilar desde el código fuente
+
+Si prefieres compilar la aplicación por tu cuenta o realizar modificaciones en el código fuente:
+
+### Requisitos previos
+- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) instalado en tu sistema.
+
+### 1. Compilación estándar y ejecución local
+Para compilar y ejecutar directamente el proyecto en modo desarrollo:
+
+```bash
+# Compilar el proyecto
+dotnet build
+
+# Ejecutar una comprobación única
+dotnet run -- --once
+
+# Ejecutar en modo demonio continuo
+dotnet run
+```
+
+### 2. Generar ejecutables autónomos (Single-File Self-Contained)
+El proyecto está configurado para generar binarios independientes que no requieren tener instalado el runtime de .NET 10 en la máquina de destino:
+
+- **En Windows**: ejecuta el script por lotes incluido en la raíz para compilar todas las plataformas de golpe:
+  ```cmd
+  build.bat
+  ```
+
+- **En Linux / macOS**: concede permisos de ejecución (solo la primera vez) y lanza el script bash:
+  ```bash
+  chmod +x build.sh
+  ./build.sh
+  ```
+  Los binarios generados se guardarán organizados en la carpeta `./build/` para cada arquitectura (`win-x64`, `win-arm64`, `osx-x64`, `osx-arm64`, `linux-x64`, `linux-arm64`).
+
+- **Mediante el CLI de .NET** para una plataforma específica:
+  ```bash
+  # Para Windows (x64)
+  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./dist/win-x64
+
+  # Para Linux (x64)
+  dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o ./dist/linux-x64
+
+  # Para macOS con procesadores Apple Silicon (ARM64)
+  dotnet publish -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -o ./dist/osx-arm64
+  ```
+
 ## Cómo contribuir
 
 ¡Toda ayuda es bienvenida! Si quieres mejorar el proyecto:
@@ -250,5 +305,5 @@ Este proyecto está bajo la Licencia **Apache 2.0**. Consulta el archivo `LICENS
 
 ## Posibles mejoras futuras
 
-- Añadir soporte para especificar clave de API y zona directamente en `appsettings.json` para cada dominio, permitiendo gestionar dominios de diferentes cuentas de Cloudflare.
+- Añadir soporte para especificar clave de API y zona directamente en `appsettings.json` para cada dominio individual, permitiendo gestionar dominios de diferentes cuentas de Cloudflare. Ahora solo se permite la gestión de dominios bajo la misma cuenta de Cloudflare (misma clave de API)..
 - Soporte para avisos por email o Telegram cada vez que cambien de estado uno o varios dominios

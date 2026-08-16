@@ -1,61 +1,49 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
+using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
+using ManageDns.Models;
+using ManageDns.Services;
 
 namespace ManageDns
 {
 	/// <summary>
-	/// Clase principal que contiene el punto de entrada y el flujo principal del programa (monitoreo y actualización de DNS).
+	/// Clase principal y punto de entrada de la aplicación SiFutbolNoCF.
 	/// </summary>
+	/// <remarks>
+	/// Orquesta los servicios estáticos especializados para la conmutación inteligente de proxies en Cloudflare.
+	/// Es el único componente responsable de gobernar la presentación visual, mensajes y emojis por consola.
+	/// </remarks>
 	class Program
 	{
-		#region Campos y Propiedades
-		// Opciones globales de serialización JSON case-insensitive para .NET 10
-		private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
-		{
-			PropertyNameCaseInsensitive = true
-		};
-
-		// Cliente HttpClient único y estático, reutilizado de forma segura entre llamadas
-		private static readonly HttpClient _httpClient = new HttpClient
-		{
-			Timeout = TimeSpan.FromSeconds(10)
-		};
-		#endregion
-
 		/// <summary>
-		/// Punto de entrada del programa. Determina el modo de ejecución (One-off o Demonio) según los parámetros de entrada.
+		/// Punto de entrada del programa. Determina el modo de ejecución (One-off, Ayuda o Demonio).
 		/// </summary>
 		/// <param name="args">Argumentos recibidos por línea de comandos.</param>
 		static async Task Main(string[] args)
 		{
-			// Forzar codificación UTF-8 para visualización de emojis en Windows
+			// Forzar codificación UTF-8 en la consola para garantizar la correcta visualización de emojis en cualquier terminal
 			Console.OutputEncoding = Encoding.UTF8;
 
-			//Muestra la ayuda con -? o --help
+			// Comprobar si el usuario solicita ayuda mediante -? o --help
 			if (args.Length == 1 && (args[0] == "-?" || args[0] == "--help"))
 			{
 				ShowHelp();
 				return;
 			}
-			//Si se le pasa -1 o --once, se ejecuta una sola vez y luego termina
+
+			// Comprobar si se solicita ejecutar un único ciclo con -1 o --once (ideal para cron jobs o tareas programadas)
 			if (args.Length == 1 && (args[0] == "-1" || args[0] == "--once"))
 			{
 				await RunDaemon(runOnce: true);
 			}
-			// Si se le pasan exactamente los 6 argumentos que necesita, funciona en modo de ejecución única (one-off)
-			// Esto es útil para pruebas rápidas o para ejecutar el programa manualmente sin necesidad de un bucle infinito.
+			// Comprobar si se proporcionan exactamente 6 argumentos para el modo directo de ejecución única (one-off)
 			else if (args.Length == 6)
 			{
 				await RunOneOff(args);
 			}
-			// Si va sin parámetros o con un número incorrecto de ellos, se ejecuta en modo "demonio" (bucle continuo inteligente)
-			// leyendo appsettings.local.json, appsettings.json o variables de entorno para configurarse.
+			// Por defecto, iniciar en modo demonio continuo con bucle infinito y comprobaciones periódicas
 			else
 			{
 				await RunDaemon(runOnce: false);
@@ -63,26 +51,26 @@ namespace ManageDns
 		}
 
 		/// <summary>
-		/// Muestra la ayuda del programa por consola detallando la funcionalidad, los dos modos de funcionamiento y los parámetros requeridos.
+		/// Muestra la guía de ayuda y uso del programa por consola detallando los modos y parámetros admitidos.
 		/// </summary>
 		static void ShowHelp()
 		{
+			// Obtener la versión dinámica desde los metadatos del ensamblado
 			var assembly = typeof(Program).Assembly;
 			var version = assembly.GetName().Version?.ToString() ?? "1.0.0.0";
 
+			// Imprimir cabecera de ayuda
 			Console.WriteLine($"===== Ayuda: CF Football Bypass INTELIGENTE v{version} =====");
 			Console.WriteLine();
 			Console.WriteLine("Funcionalidad:");
-			Console.WriteLine("  Este programa ayuda a mitigar los bloqueos de ISP (por culpa de La Liga cuando hay o va a haber fútbol)");
+			Console.WriteLine("  Este programa ayuda a mitigar los bloqueos de ISP (por culpa de La Liga cuando hay fútbol)");
 			Console.WriteLine("  activando o desactivando automáticamente el proxy de Cloudflare (nube naranja) para los registros DNS.");
 			Console.WriteLine();
 			Console.WriteLine("Modos de Funcionamiento:");
 			Console.WriteLine("  1. Modo Demonio (Bucle Continuo o Único):");
 			Console.WriteLine("     - Por defecto (sin parámetros): Lee la configuración de 'appsettings.local.json' > 'appsettings.json' >");
-			Console.WriteLine("       variables de entorno, y comprueba periódicamente el estado de los dominios,");
-			Console.WriteLine("       actualizando Cloudflare de forma continua.");
-			Console.WriteLine("     - Con parámetro '-1' o '--once': Realiza el ciclo de comprobación y actualización");
-			Console.WriteLine("       de la configuración una única vez y finaliza.");
+			Console.WriteLine("       variables de entorno, y comprueba periódicamente el estado de las IPs bloqueadas.");
+			Console.WriteLine("     - Con parámetro '-1' o '--once': Realiza el ciclo de comprobación una única vez y finaliza.");
 			Console.WriteLine();
 			Console.WriteLine("  2. Modo Ejecución Única (One-off):");
 			Console.WriteLine("     - Se activa al pasar exactamente 6 parámetros en la línea de comandos.");
@@ -106,11 +94,12 @@ namespace ManageDns
 		}
 
 		/// <summary>
-		/// Ejecuta una única operación de conmutación de DNS basándose estrictamente en los argumentos proporcionados por el usuario.
+		/// Ejecuta una conmutación directa e inmediata de proxy en Cloudflare a partir de 6 argumentos CLI.
 		/// </summary>
-		/// <param name="args">Colección de parámetros recibidos (dominio, registro, tipo, activateCfProxy, apiToken, zoneId).</param>
+		/// <param name="args">Argumentos: [0]dominio, [1]registro, [2]tipo, [3]activateCfProxy, [4]apiToken, [5]zoneId.</param>
 		static async Task RunOneOff(string[] args)
 		{
+			// Mapear los argumentos posicionales recibidos por línea de comandos
 			string domain = args[0];
 			string record = args[1];
 			string type = args[2];
@@ -118,32 +107,61 @@ namespace ManageDns
 			string apiToken = args[4];
 			string zoneId = args[5];
 
+			// Construir el nombre calificado del host a conmutar
+			string fullname = (string.IsNullOrEmpty(record) || record == "@") ? domain : $"{record}.{domain}";
+			Console.WriteLine($"   ├─ 👀 {fullname} (tipo: {type})");
+
 			try
 			{
-				await UpdateDnsRecord(domain, record, type, activateCfProxy, apiToken, zoneId);
+				// 1. Consultar el estado actual del registro en Cloudflare
+				var currentRecord = await CloudflareService.FetchDnsRecordAsync(domain, record, type, apiToken, zoneId);
+				if (currentRecord == null)
+				{
+					throw new Exception("Registro no encontrado en Cloudflare.");
+				}
+
+				// 2. Determinar emojis e indicadores de texto para el estado del proxy
+				string proxyEmoji = activateCfProxy ? "🔒 ON" : "🔓 OFF";
+				string currentProxyEmoji = currentRecord.proxied ? "🔒 ON" : "🔓 OFF";
+
+				// 3. Aplicar la actualización en Cloudflare mediante el servicio
+				bool updated = await CloudflareService.ApplyDnsRecordUpdateAsync(domain, record, type, currentRecord, activateCfProxy, apiToken, zoneId);
+
+				// 4. Mostrar el resultado por consola
+				if (updated)
+				{
+					Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP origen: {currentRecord.content})");
+				}
+				else
+				{
+					Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP origen: {currentRecord.content})");
+				}
 			}
 			catch (Exception ex)
 			{
+				// Mostrar el error en formato de sub-rama y finalizar con código de error
 				Console.WriteLine($"   ├─── ❌ Error: {ex.Message}");
 				Environment.Exit(1);
 			}
+
+			// Finalizar satisfactoriamente
 			Environment.Exit(0);
 		}
 
 		/// <summary>
-		/// Ejecuta el proceso de forma programada o única, comprobando el estado de bloqueo de los dominios y actualizándolos.
+		/// Bucle principal de monitorización periódica de dominios y conmutación inteligente de proxies.
 		/// </summary>
-		/// <param name="runOnce">Si es verdadero, ejecuta el ciclo de comprobación de dominios una única vez y finaliza.</param>
+		/// <param name="runOnce">Indica si debe ejecutarse un único ciclo (true) o entrar en bucle continuo (false).</param>
 		static async Task RunDaemon(bool runOnce = false)
 		{
-			// Leer metadatos del ensamblado (desde AssemblyInfo.cs)
+			// Obtener la versión de la aplicación para la cabecera
 			var assembly = typeof(Program).Assembly;
 			var version = assembly.GetName().Version?.ToString() ?? "1.0.0.0";
 
 			Console.WriteLine($"===== CF Football Bypass INTELIGENTE v{version} =====");
 			Console.WriteLine("===============================================================");
 
-			// Leer variables mediante ConfigurationManager
+			// 1. Cargar la configuración resuelta desde JSON o variables de entorno
 			AppSettings config = null;
 			try
 			{
@@ -155,30 +173,34 @@ namespace ManageDns
 				Environment.Exit(1);
 			}
 
+			// Validar que la configuración no sea nula
 			if (config == null)
 			{
 				LogMessage("❌", "ERROR", "No se pudo cargar la configuración.");
 				Environment.Exit(1);
 			}
 
+			// Extraer los parámetros de configuración necesarios
 			string cfApiToken = config.CfApiToken;
-			string statusUrl = config.StatusUrl ?? "https://hayahora.futbol/status.json"; //Valor por defecto, pero se puede obtener de settings por si cambia
+			string statusUrl = config.StatusUrl;
 			int intervalSeconds = config.IntervalSeconds;
 			var domains = config.Domains;
 
+			// Validar la presencia obligatoria del token de API de Cloudflare
 			if (string.IsNullOrEmpty(cfApiToken))
 			{
-				LogMessage("❌", "ERROR", "CfApiToken debe estar configurado (vía appsettings.local.json, appsettings.json o variables de entorno).");
+				LogMessage("❌", "ERROR", "CfApiToken debe estar configurado.");
 				Environment.Exit(1);
 			}
 
+			// Validar que exista al menos un dominio configurado para monitorizar
 			if (domains == null || domains.Count == 0)
 			{
 				LogMessage("❌", "ERROR", "No se encontraron dominios válidos configurados.");
 				Environment.Exit(1);
 			}
 
-			// Validar y auto-detectar IDs de zona si faltan en la configuración
+			// 2. Auto-detectar los Zone IDs de Cloudflare si el usuario los dejó vacíos
 			foreach (var dom in domains)
 			{
 				if (string.IsNullOrEmpty(dom.CfZoneId))
@@ -189,82 +211,164 @@ namespace ManageDns
 					LogMessage("🔍", "CONFIG", $"Auto-detectando ID de zona para {dom.name}...");
 					try
 					{
-						string resolvedZoneId = await FetchZoneId(dom.name, cfApiToken);
+						// Consultar la API de Cloudflare para resolver el ID de la zona
+						string resolvedZoneId = await CloudflareService.FetchZoneIdAsync(dom.name, cfApiToken);
 						dom.CfZoneId = resolvedZoneId;
 						LogMessage("✅", "CONFIG", $"ID de zona detectado para {dom.name}: {resolvedZoneId}");
 					}
 					catch (Exception ex)
 					{
+						// Si falla la auto-detección, notificar y finalizar con error
 						LogMessage("❌", "ERROR", $"El dominio {fullname} no tiene un ID de zona (CfZoneId) y falló la auto-detección: {ex.Message}");
 						Environment.Exit(1);
 					}
 				}
 			}
 
+			// 3. Iniciar el bucle de comprobación y sincronización
 			while (true)
 			{
 				Console.WriteLine();
-				LogTimestamp("Consultando el estado de los dominios...");
+				LogTimestamp("Descargando estado de IPs bloqueadas...");
 
-				int domainIndex = 0;
+				// Descargar el archivo data.json una única vez por iteración para optimizar ancho de banda
+				HashSet<string> blockedIps;
+				try
+				{
+					blockedIps = await FootballStatusService.FetchBlockedIpsAsync(statusUrl);
+					LogMessage("ℹ️", "ESTADO", $"Total de IPs bloqueadas activamente: {blockedIps.Count}");
+				}
+				catch (Exception ex)
+				{
+					LogMessage("⚠️", "ESTADO", $"Error al consultar IPs bloqueadas: {ex.Message}");
+					blockedIps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+				}
+
+				// Iterar sobre cada uno de los dominios configurados
 				foreach (var dom in domains)
 				{
-					if (domainIndex > 0)
-					{
+					// Imprimir un salto de línea de separación entre dominios
 						Console.WriteLine();
-					}
-					domainIndex++;
 
+					// Normalizar nombre de registro y tipo de registro
 					string record = string.IsNullOrEmpty(dom.record) ? "@" : dom.record;
 					string type = string.IsNullOrEmpty(dom.type) ? "A" : dom.type;
 					string fullname = (record == "@") ? dom.name : $"{record}.{dom.name}";
 
-					Console.WriteLine($"   ├─ 👀 {fullname}");
+					// Imprimir cabecera de nivel 1 con el dominio a evaluar
+					Console.WriteLine($"   ├─ 👀 {fullname} (tipo: {type})");
 
-					// Consultar el estado del dominio
-					string queryUrl = $"{statusUrl}?domain={Uri.EscapeDataString(fullname)}";
-
-					string jsonResponse = await FetchStatus(queryUrl);
-					if (string.IsNullOrEmpty(jsonResponse) || jsonResponse.Trim() == "null")
-					{
-						Console.WriteLine("   ├─── ⚠️ Error al obtener el estado, se omitirá en este ciclo.");
-						continue;
-					}
-
-					StatusResponse status = null;
+					// Consultar el registro actual en Cloudflare para conocer su estado
+					DnsRecord currentRecord = null;
 					try
 					{
-						status = JsonSerializer.Deserialize<StatusResponse>(jsonResponse, _jsonOptions);
+						currentRecord = await CloudflareService.FetchDnsRecordAsync(dom.name, record, type, cfApiToken, dom.CfZoneId);
 					}
 					catch (Exception ex)
 					{
-						Console.WriteLine($"   ├─── ⚠️ Error al parsear el estado: {ex.Message}, se omitirá.");
+						Console.WriteLine($"   ├─── ❌ Error al consultar Cloudflare para {fullname}: {ex.Message}");
 						continue;
 					}
 
-					if (status == null)
+					// Si el registro no existe en la zona, saltar al siguiente dominio
+					if (currentRecord == null)
 					{
-						Console.WriteLine("   ├─── ⚠️ Respuesta nula, se omitirá.");
+						Console.WriteLine($"   ├─── ⚠️ Registro {fullname} no encontrado en Cloudflare, se omitirá.");
 						continue;
 					}
 
-					// ok == true significa que NO está bloqueado -> activateCfProxy activado (desiredProxy = true)
-					// ok == false significa que SÍ está bloqueado -> activateCfProxy desactivado (desiredProxy = false)
-					bool desiredProxy = status.ok;
+					// Obtener el estado actual del proxy (nube naranja o gris)
+					bool currentProxied = currentRecord.proxied;
+					bool desiredProxy = true;
 
-					if (desiredProxy)
+					if (currentProxied)
 					{
-						Console.WriteLine("   ├─── ✅ Estado: no bloqueado. Estado activateCfProxy deseado: ACTIVAR.");
+						// ESCENARIO 1: El proxy está activo en Cloudflare.
+						// El DNS público resuelve a las direcciones IP de Cloudflare.
+						var resolvedIps = await DnsResolverService.ResolveHostIpsAsync(fullname);
+						if (resolvedIps.Count > 0)
+						{
+							// Guardar las IPs de Cloudflare detectadas en la caché persistente para recordarlas si se desactiva el proxy
+							IpCacheService.SetIps(fullname, resolvedIps);
+
+							// Comprobar si alguna de las IPs de Cloudflare resueltas está en la lista de bloqueadas
+							bool isBlocked = resolvedIps.Any(ip => blockedIps.Contains(ip));
+							if (isBlocked)
+							{
+								// Hay bloqueo activo: se debe desactivar el proxy para exponer la IP de origen
+								desiredProxy = false;
+								Console.WriteLine($"   ├─── 🔴 Estado: BLOQUEADO (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.");
+							}
+							else
+							{
+								// No hay bloqueo: mantener el proxy activado
+								desiredProxy = true;
+								Console.WriteLine($"   ├─── ✅ Estado: no bloqueado (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: ACTIVAR.");
+							}
+						}
+						else
+						{
+							// Si falló la resolución DNS, conservar el estado actual para evitar cambios involuntarios
+							Console.WriteLine($"   ├─── ⚠️ No se pudieron resolver IPs por DNS para {fullname}, se mantendrá el estado actual.");
+							desiredProxy = currentProxied;
+						}
 					}
 					else
 					{
-						Console.WriteLine("   ├─── 🔴 Estado: BLOQUEADO. Estado activateCfProxy deseado: DESACTIVAR.");
+						// ESCENARIO 2: El proxy está desactivado (nube gris).
+						// El DNS público resolvería a la IP de origen, por lo que consultamos las IPs de Cloudflare recordadas en la caché.
+						var cachedIps = IpCacheService.GetIps(fullname);
+						if (cachedIps != null && cachedIps.Count > 0)
+						{
+							// Comprobar si las IPs de Cloudflare que le corresponden a este dominio siguen bloqueadas
+							bool isBlocked = cachedIps.Any(ip => blockedIps.Contains(ip));
+							if (isBlocked)
+							{
+								// El partido sigue y las IPs continúan bloqueadas: mantener proxy desactivado
+								desiredProxy = false;
+								Console.WriteLine($"   ├─── 🔴 Estado: BLOQUEO ACTIVO en Cloudflare (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: DESACTIVAR.");
+							}
+							else
+							{
+								// El partido finalizó y las IPs están libres: reactivar el proxy de Cloudflare
+								desiredProxy = true;
+								Console.WriteLine($"   ├─── ✅ Estado: Cloudflare libre de bloqueos (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: ACTIVAR.");
+							}
+						}
+						else
+						{
+							// Si es un arranque en frío sin historial en caché, resolver el dominio por DNS
+							var resolvedIps = await DnsResolverService.ResolveHostIpsAsync(fullname);
+							bool isBlocked = resolvedIps.Count > 0 && resolvedIps.Any(ip => blockedIps.Contains(ip));
+							if (isBlocked)
+							{
+								desiredProxy = false;
+								Console.WriteLine($"   ├─── 🔴 Estado: BLOQUEADO (IPs: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.");
+							}
+							else
+							{
+								desiredProxy = true;
+								Console.WriteLine($"   ├─── ✅ Estado: no bloqueado. Estado proxy deseado: ACTIVAR.");
+							}
+						}
 					}
 
-					// Actualizar en Cloudflare
+					// Aplicar la actualización en Cloudflare si el estado deseado difiere del actual
 					try
 					{
-						await UpdateDnsRecord(dom.name, record, type, desiredProxy, cfApiToken, dom.CfZoneId);
+						string proxyEmoji = desiredProxy ? "🔒 ON" : "🔓 OFF";
+						string currentProxyEmoji = currentRecord.proxied ? "🔒 ON" : "🔓 OFF";
+
+						bool updated = await CloudflareService.ApplyDnsRecordUpdateAsync(dom.name, record, type, currentRecord, desiredProxy, cfApiToken, dom.CfZoneId);
+
+						if (updated)
+						{
+							Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP origen: {currentRecord.content})");
+						}
+						else
+						{
+							Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP origen: {currentRecord.content})");
+						}
 					}
 					catch (Exception ex)
 					{
@@ -272,208 +376,18 @@ namespace ManageDns
 					}
 				}
 
+				// Notificar que la iteración de todos los dominios ha concluido
 				LogMessage("✅", "Ciclo completado");
 
+				// Si se ejecutó en modo de ciclo único (-1 o --once), salir del bucle
 				if (runOnce)
 				{
 					break;
 				}
 
+				// Esperar el intervalo configurado antes de comenzar la siguiente iteración
 				LogMessage("⏳", $"Esperando {intervalSeconds} segundos antes de volver a comprobar...");
 				await Task.Delay(intervalSeconds * 1000);
-			}
-		}
-
-		/// <summary>
-		/// Realiza una solicitud HTTP GET al servicio de estado especificado y devuelve la respuesta JSON.
-		/// </summary>
-		/// <param name="url">URL completa del servicio REST.</param>
-		/// <returns>La respuesta del servidor en formato string, o null si la petición falla.</returns>
-		static async Task<string> FetchStatus(string url)
-		{
-			try
-			{
-				var response = await _httpClient.GetAsync(url);
-				if (response.StatusCode == HttpStatusCode.OK)
-				{
-					return await response.Content.ReadAsStringAsync();
-				}
-			}
-			catch
-			{
-				// Ignorar
-			}
-			return null;
-		}
-
-		/// <summary>
-		/// Busca el ID de zona en Cloudflare para un dominio específico utilizando la API de zonas.
-		/// </summary>
-		/// <param name="domain">Nombre del dominio raíz (ej. ejemplo.com).</param>
-		/// <param name="apiToken">Token de autorización de Cloudflare.</param>
-		/// <returns>El ID de la zona correspondiente de Cloudflare.</returns>
-		static async Task<string> FetchZoneId(string domain, string apiToken)
-		{
-			string queryUrl = $"https://api.cloudflare.com/client/v4/zones?name={Uri.EscapeDataString(domain)}";
-			using (var request = new HttpRequestMessage(HttpMethod.Get, queryUrl))
-			{
-				request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
-				using (var response = await _httpClient.SendAsync(request))
-				{
-					int code = (int)response.StatusCode;
-					if (code != 200)
-					{
-						throw new Exception($"HTTP {code} al consultar zonas de Cloudflare");
-					}
-
-					string responseBody = await response.Content.ReadAsStringAsync();
-					var zonesResponse = JsonSerializer.Deserialize<CloudflareZonesResponse>(responseBody, _jsonOptions);
-
-					if (zonesResponse == null || !zonesResponse.success || zonesResponse.result == null || zonesResponse.result.Count == 0)
-					{
-						throw new Exception("Zona no encontrada en la cuenta asociada.");
-					}
-
-					return zonesResponse.result[0].id;
-				}
-			}
-		}
-
-		/// <summary>
-		/// Busca el registro DNS en Cloudflare y lo actualiza con el estado deseado del activateCfProxy y TTL si difiere del actual.
-		/// </summary>
-		/// <param name="domain">Dominio principal (ej. midominio.com).</param>
-		/// <param name="record">Subdominio/Registro a actualizar (ej. www o @).</param>
-		/// <param name="type">Tipo de registro DNS (ej. A o CNAME).</param>
-		/// <param name="activateCfProxy">Define si el tráfico debe pasar (true) o no (false) por el proxy de Cloudflare.</param>
-		/// <param name="apiToken">Token de autenticación de Cloudflare.</param>
-		/// <param name="zoneId">Identificador único de la zona en Cloudflare.</param>
-		static async Task UpdateDnsRecord(string domain, string record, string type, bool activateCfProxy, string apiToken, string zoneId)
-		{
-			// Construir nombre completo
-			string fullname = (string.IsNullOrEmpty(record) || record == "@") ? domain : $"{record}.{domain}";
-			string endpoint = $"https://api.cloudflare.com/client/v4/zones/{zoneId}/dns_records";
-
-			Console.WriteLine($"   ├─── 🔍 Buscando {fullname} (tipo: {type})");
-
-			// Consultar el registro existente
-			string queryUrl = $"{endpoint}?name={Uri.EscapeDataString(fullname)}&type={type}";
-
-			string responseBody = null;
-			int httpCode = 0;
-
-			try
-			{
-				using (var request = new HttpRequestMessage(HttpMethod.Get, queryUrl))
-				{
-					request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
-					using (var response = await _httpClient.SendAsync(request))
-					{
-						httpCode = (int)response.StatusCode;
-						responseBody = await response.Content.ReadAsStringAsync();
-					}
-				}
-			}
-			catch (Exception ex)
-			{
-				var innerMessage = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
-				throw new Exception($"Error de conexión: {innerMessage}");
-			}
-
-			if (httpCode != 200)
-			{
-				throw new Exception($"HTTP {httpCode} al consultar Cloudflare");
-			}
-
-			// Deserializar la respuesta
-			CloudflareResponse cfResponse = null;
-
-			try
-			{
-				cfResponse = JsonSerializer.Deserialize<CloudflareResponse>(responseBody, _jsonOptions);
-			}
-			catch
-			{
-				// Ignorar y lanzar error de respuesta inválida abajo
-			}
-
-			if (cfResponse == null || !cfResponse.success || cfResponse.result == null)
-			{
-				throw new Exception("Respuesta inválida de Cloudflare API");
-			}
-
-			if (cfResponse.result.Count == 0)
-			{
-				throw new Exception("Registro no encontrado. Verifica nombre correcto y tipo de registro");
-			}
-
-			// Procesar el registro encontrado (se toma el primero)
-			var recordData = cfResponse.result[0];
-			string recordId = recordData.id;
-			string content = recordData.content;
-			bool currentProxied = recordData.proxied;
-
-			// Determinar emoji para el estado del proxy (activo o no)
-			string proxyEmoji = activateCfProxy ? "🔒" : "🔓";
-			string currentProxyEmoji = currentProxied ? "🔒" : "🔓";
-
-			// Verificar si ya está en el estado deseado
-			if (currentProxied == activateCfProxy)
-			{
-				Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP: {content})");
-				return;
-			}
-
-			// Preparar payload de actualización
-			var payload = new
-			{
-				type = type,
-				name = fullname,
-				content = content,
-				proxied = activateCfProxy,
-				ttl = activateCfProxy ? 1 : 300 // TTL auto (1) si está proxied, 5min (300) si no
-			};
-
-			string jsonPayload = JsonSerializer.Serialize(payload, _jsonOptions);
-
-			// Actualizar registro con PUT
-			string updateUrl = $"{endpoint}/{recordId}";
-			using (var request = new HttpRequestMessage(HttpMethod.Put, updateUrl))
-			{
-				request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
-				request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-
-				int updateCode = 0;
-				string respBody = null;
-
-				try
-				{
-					using (var response = await _httpClient.SendAsync(request))
-					{
-						updateCode = (int)response.StatusCode;
-						respBody = await response.Content.ReadAsStringAsync();
-					}
-				}
-				catch (Exception ex)
-				{
-					var innerMessage = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
-					throw new Exception($"Error de conexión al actualizar: {innerMessage}");
-				}
-
-				if (updateCode == 200)
-				{
-					Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP: {content})");
-				}
-				else
-				{
-					var updateResult = JsonSerializer.Deserialize<CloudflareResponse>(respBody, _jsonOptions);
-					string errorMsg = "Error desconocido";
-					if (updateResult != null && updateResult.errors != null && updateResult.errors.Count > 0)
-					{
-						errorMsg = updateResult.errors[0].message;
-					}
-					throw new Exception($"HTTP {updateCode} │ {errorMsg}");
-				}
 			}
 		}
 
@@ -486,8 +400,10 @@ namespace ManageDns
 		/// <param name="message">Texto opcional con el detalle del mensaje.</param>
 		static void LogMessage(string emoji, string level, string message = "")
 		{
+			// Obtener la fecha y hora local actual formateada
 			string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
+			// Imprimir el mensaje estructurado
 			if (string.IsNullOrEmpty(message))
 			{
 				Console.WriteLine($"[{timestamp}] {emoji} {level}");
@@ -504,6 +420,7 @@ namespace ManageDns
 		/// <param name="message">Mensaje a mostrar.</param>
 		static void LogTimestamp(string message)
 		{
+			// Obtener la fecha y hora local actual formateada
 			string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 			Console.WriteLine($"[{timestamp}] {message}");
 		}
@@ -515,95 +432,15 @@ namespace ManageDns
 		/// <returns>Verdadero si el texto equivale a true; de lo contrario, falso.</returns>
 		static bool ParseBoolean(string value)
 		{
+			// Si la cadena es nula o vacía, retornar falso
 			if (string.IsNullOrEmpty(value)) return false;
+
+			// Normalizar a minúsculas y sin espacios
 			value = value.Trim().ToLowerInvariant();
+
+			// Evaluar equivalencias comunes de valores afirmativos
 			return value == "true" || value == "1" || value == "on" || value == "yes";
 		}
 		#endregion
 	}
-
-	#region Clases auxiliares
-	/// <summary>
-	/// Representa la respuesta de estado devuelta por el endpoint de verificación de bloqueo.
-	/// </summary>
-	public class StatusResponse
-	{
-		/// <summary>Determina si el dominio está funcionando correctamente (true) o si está bloqueado por el ISP (false).</summary>
-		public bool ok { get; set; }
-	}
-
-	/// <summary>
-	/// Representa la envoltura de respuesta estándar devuelta por la API de Cloudflare.
-	/// </summary>
-	public class CloudflareResponse
-	{
-		/// <summary>Colección de registros DNS devueltos por la consulta.</summary>
-		public List<DnsRecord> result { get; set; }
-
-		/// <summary>Indica si la petición a Cloudflare fue exitosa.</summary>
-		public bool success { get; set; }
-
-		/// <summary>Lista de posibles errores devueltos por la API de Cloudflare.</summary>
-		public List<CloudflareError> errors { get; set; }
-	}
-
-	/// <summary>
-	/// Estructura detallada de un registro DNS individual devuelto por Cloudflare.
-	/// </summary>
-	public class DnsRecord
-	{
-		/// <summary>Identificador único del registro DNS en Cloudflare.</summary>
-		public string id { get; set; }
-
-		/// <summary>Nombre completo del registro (ej. sub.dominio.com).</summary>
-		public string name { get; set; }
-
-		/// <summary>Tipo de registro DNS (A, CNAME, etc.).</summary>
-		public string type { get; set; }
-
-		/// <summary>Contenido del registro DNS (dirección IP o nombre de destino).</summary>
-		public string content { get; set; }
-
-		/// <summary>Indica si el activateCfProxy ("nube naranja") está activado en Cloudflare.</summary>
-		public bool proxied { get; set; }
-
-		/// <summary>Tiempo de vida (TTL) del registro DNS en segundos.</summary>
-		public int ttl { get; set; }
-	}
-
-	/// <summary>
-	/// Representa un error detallado retornado por la API de Cloudflare.
-	/// </summary>
-	public class CloudflareError
-	{
-		/// <summary>Código numérico del error.</summary>
-		public int code { get; set; }
-
-		/// <summary>Mensaje explicativo del error.</summary>
-		public string message { get; set; }
-	}
-	/// <summary>
-	/// Representa la respuesta de la API de Cloudflare al buscar zonas.
-	/// </summary>
-	public class CloudflareZonesResponse
-	{
-		/// <summary>Colección de zonas devueltas por la consulta.</summary>
-		public List<CloudflareZone> result { get; set; }
-
-		/// <summary>Indica si la petición fue exitosa.</summary>
-		public bool success { get; set; }
-	}
-
-	/// <summary>
-	/// Representa la información básica de una zona de Cloudflare.
-	/// </summary>
-	public class CloudflareZone
-	{
-		/// <summary>Identificador único de la zona en Cloudflare.</summary>
-		public string id { get; set; }
-
-		/// <summary>Nombre del dominio de la zona.</summary>
-		public string name { get; set; }
-	}
-	#endregion
 }

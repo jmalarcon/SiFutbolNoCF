@@ -6,7 +6,6 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <UserSecretsId>SiFutbolNoCF-6b63ca0c-c603-4951-b0db-64dfd60e7e17</UserSecretsId>
     <StartupObject>ManageDns.Program</StartupObject>
     <AssemblyTitle>SiFutbolNoCF</AssemblyTitle>
     <ApplicationIcon>imgs\SiFutbolNoCF.ico</ApplicationIcon>
@@ -26,10 +25,21 @@
     <Content Include="imgs\SiFutbolNoCF.ico" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <None Update="appsettings.local.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Configuration)' != 'Debug'">
     <None Update="appsettings.local.json">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

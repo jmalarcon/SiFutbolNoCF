@@ -44,7 +44,7 @@ namespace ManageDns
 				return;
 			}
 			//Si se le pasa -1 o --once, se ejecuta una sola vez y luego termina
-			if (args.Length == 1 && (args[0] == "-1" || args[0] == "--one"))
+			if (args.Length == 1 && (args[0] == "-1" || args[0] == "--once"))
 			{
 				await RunDaemon(runOnce: true);
 			}
@@ -54,8 +54,8 @@ namespace ManageDns
 			{
 				await RunOneOff(args);
 			}
-			// Si va sin parámetros o con un número icorrecto de ellos, se ejecuta en modo "demonio" (bucle continuo inteligente)
-			// leyendo appsettings.json, appsettings.local.json, variables de entorno o secretos de .NET para configurarse.
+			// Si va sin parámetros o con un número incorrecto de ellos, se ejecuta en modo "demonio" (bucle continuo inteligente)
+			// leyendo appsettings.local.json, appsettings.json o variables de entorno para configurarse.
 			else
 			{
 				await RunDaemon(runOnce: false);
@@ -79,10 +79,10 @@ namespace ManageDns
 			Console.WriteLine("Modos de Funcionamiento:");
 			Console.WriteLine("  1. Modo Demonio (Bucle Continuo o Único):");
 			Console.WriteLine("     - Por defecto (sin parámetros): Lee la configuración de 'appsettings.local.json' > 'appsettings.json' >");
-			Console.WriteLine("       variables de entorno > secretos de .NET,  y comprueba periódicamente el estado de los dominios,");
+			Console.WriteLine("       variables de entorno, y comprueba periódicamente el estado de los dominios,");
 			Console.WriteLine("       actualizando Cloudflare de forma continua.");
-			Console.WriteLine("     - Con parámetro '-1' o '--one': Realiza el ciclo de comprobación y actualización");
-			Console.WriteLine("       de 'appsettings.json' una única vez y finaliza.");
+			Console.WriteLine("     - Con parámetro '-1' o '--once': Realiza el ciclo de comprobación y actualización");
+			Console.WriteLine("       de la configuración una única vez y finaliza.");
 			Console.WriteLine();
 			Console.WriteLine("  2. Modo Ejecución Única (One-off):");
 			Console.WriteLine("     - Se activa al pasar exactamente 6 parámetros en la línea de comandos.");
@@ -124,9 +124,7 @@ namespace ManageDns
 			}
 			catch (Exception ex)
 			{
-				Console.Write("   ├─ ");
-				WriteColored("❌ Error: ", ConsoleColor.Red);
-				Console.WriteLine(ex.Message);
+				Console.WriteLine($"   ├─── ❌ Error: {ex.Message}");
 				Environment.Exit(1);
 			}
 			Environment.Exit(0);
@@ -153,13 +151,13 @@ namespace ManageDns
 			}
 			catch (Exception ex)
 			{
-				LogMessage("❌", "ERROR", ConsoleColor.Red, $"Error al cargar la configuración: {ex.Message}");
+				LogMessage("❌", "ERROR", $"Error al cargar la configuración: {ex.Message}");
 				Environment.Exit(1);
 			}
 
 			if (config == null)
 			{
-				LogMessage("❌", "ERROR", ConsoleColor.Red, "No se pudo cargar la configuración.");
+				LogMessage("❌", "ERROR", "No se pudo cargar la configuración.");
 				Environment.Exit(1);
 			}
 
@@ -170,13 +168,13 @@ namespace ManageDns
 
 			if (string.IsNullOrEmpty(cfApiToken))
 			{
-				LogMessage("❌", "ERROR", ConsoleColor.Red, "CfApiToken debe estar configurado (vía appsettings.local.json, appsettings.json, variables de entorno o user-secrets).");
+				LogMessage("❌", "ERROR", "CfApiToken debe estar configurado (vía appsettings.local.json, appsettings.json o variables de entorno).");
 				Environment.Exit(1);
 			}
 
 			if (domains == null || domains.Count == 0)
 			{
-				LogMessage("❌", "ERROR", ConsoleColor.Red, "No se encontraron dominios válidos configurados.");
+				LogMessage("❌", "ERROR", "No se encontraron dominios válidos configurados.");
 				Environment.Exit(1);
 			}
 
@@ -188,16 +186,16 @@ namespace ManageDns
 					string record = string.IsNullOrEmpty(dom.record) ? "@" : dom.record;
 					string fullname = (record == "@") ? dom.name : $"{record}.{dom.name}";
 
-					LogMessage("🔍", "CONFIG", ConsoleColor.Cyan, $"Auto-detectando ID de zona para {dom.name}...");
+					LogMessage("🔍", "CONFIG", $"Auto-detectando ID de zona para {dom.name}...");
 					try
 					{
 						string resolvedZoneId = await FetchZoneId(dom.name, cfApiToken);
 						dom.CfZoneId = resolvedZoneId;
-						LogMessage("✅", "CONFIG", ConsoleColor.Green, $"ID de zona detectado para {dom.name}: {resolvedZoneId}");
+						LogMessage("✅", "CONFIG", $"ID de zona detectado para {dom.name}: {resolvedZoneId}");
 					}
 					catch (Exception ex)
 					{
-						LogMessage("❌", "ERROR", ConsoleColor.Red, $"El dominio {fullname} no tiene un ID de zona (CfZoneId) y falló la auto-detección: {ex.Message}");
+						LogMessage("❌", "ERROR", $"El dominio {fullname} no tiene un ID de zona (CfZoneId) y falló la auto-detección: {ex.Message}");
 						Environment.Exit(1);
 					}
 				}
@@ -206,26 +204,30 @@ namespace ManageDns
 			while (true)
 			{
 				Console.WriteLine();
-				LogMessage("🔍", "Chequeando el estado de los dominios...", ConsoleColor.Blue, "");
+				LogTimestamp("Consultando el estado de los dominios...");
 
+				int domainIndex = 0;
 				foreach (var dom in domains)
 				{
+					if (domainIndex > 0)
+					{
+						Console.WriteLine();
+					}
+					domainIndex++;
+
 					string record = string.IsNullOrEmpty(dom.record) ? "@" : dom.record;
 					string type = string.IsNullOrEmpty(dom.type) ? "A" : dom.type;
 					string fullname = (record == "@") ? dom.name : $"{record}.{dom.name}";
 
+					Console.WriteLine($"   ├─ 👀 {fullname}");
+
 					// Consultar el estado del dominio
 					string queryUrl = $"{statusUrl}?domain={Uri.EscapeDataString(fullname)}";
-					Console.Write("   ├─ 🔍 Consultando estado para ");
-					WriteColored(fullname, ConsoleColor.White);
-					Console.WriteLine("...");
 
 					string jsonResponse = await FetchStatus(queryUrl);
 					if (string.IsNullOrEmpty(jsonResponse) || jsonResponse.Trim() == "null")
 					{
-						Console.Write("   │  ");
-						WriteColored("⚠️", ConsoleColor.Yellow);
-						Console.WriteLine($" Error al obtener el estado para {fullname}, se omitirá en este ciclo.");
+						Console.WriteLine("   ├─── ⚠️ Error al obtener el estado, se omitirá en este ciclo.");
 						continue;
 					}
 
@@ -236,17 +238,13 @@ namespace ManageDns
 					}
 					catch (Exception ex)
 					{
-						Console.Write("   │  ");
-						WriteColored("⚠️", ConsoleColor.Yellow);
-						Console.WriteLine($" Error al parsear el estado para {fullname}: {ex.Message}, se omitirá.");
+						Console.WriteLine($"   ├─── ⚠️ Error al parsear el estado: {ex.Message}, se omitirá.");
 						continue;
 					}
 
 					if (status == null)
 					{
-						Console.Write("   │  ");
-						WriteColored("⚠️", ConsoleColor.Yellow);
-						Console.WriteLine($" Respuesta nula para {fullname}, se omitirá.");
+						Console.WriteLine("   ├─── ⚠️ Respuesta nula, se omitirá.");
 						continue;
 					}
 
@@ -256,19 +254,11 @@ namespace ManageDns
 
 					if (desiredProxy)
 					{
-						Console.Write("   │  ");
-						WriteColored("✅", ConsoleColor.Green);
-						Console.Write($" {fullname} no está bloqueado. Estado activateCfProxy deseado: ");
-						WriteColored("ACTIVAR", ConsoleColor.Green);
-						Console.WriteLine(".");
+						Console.WriteLine("   ├─── ✅ Estado: no bloqueado. Estado activateCfProxy deseado: ACTIVAR.");
 					}
 					else
 					{
-						Console.Write("   │  ");
-						WriteColored("🔴", ConsoleColor.Red);
-						Console.Write($" {fullname} detectado como BLOQUEADO. Estado activateCfProxy deseado: ");
-						WriteColored("DESACTIVAR", ConsoleColor.Red);
-						Console.WriteLine(".");
+						Console.WriteLine("   ├─── 🔴 Estado: BLOQUEADO. Estado activateCfProxy deseado: DESACTIVAR.");
 					}
 
 					// Actualizar en Cloudflare
@@ -278,21 +268,18 @@ namespace ManageDns
 					}
 					catch (Exception ex)
 					{
-						Console.Write("   │  ");
-						WriteColored("❌ Error al actualizar Cloudflare para ", ConsoleColor.Red);
-						Console.Write(fullname);
-						Console.WriteLine($": {ex.Message}");
+						Console.WriteLine($"   ├─── ❌ Error al actualizar Cloudflare para {fullname}: {ex.Message}");
 					}
 				}
 
-				LogMessage("✅", "Ciclo completado", ConsoleColor.Green, "");
+				LogMessage("✅", "Ciclo completado");
 
 				if (runOnce)
 				{
 					break;
 				}
 
-				LogMessage("⏳", $"Esperando {intervalSeconds} segundos antes de volver a comprobar...", ConsoleColor.DarkGray, "");
+				LogMessage("⏳", $"Esperando {intervalSeconds} segundos antes de volver a comprobar...");
 				await Task.Delay(intervalSeconds * 1000);
 			}
 		}
@@ -367,13 +354,7 @@ namespace ManageDns
 			string fullname = (string.IsNullOrEmpty(record) || record == "@") ? domain : $"{record}.{domain}";
 			string endpoint = $"https://api.cloudflare.com/client/v4/zones/{zoneId}/dns_records";
 
-			WriteColored("   ├─", ConsoleColor.DarkGray);
-			Console.Write(" ");
-			WriteColored("🔍 Buscando", ConsoleColor.Blue);
-			Console.Write(" ");
-			WriteColored(fullname, ConsoleColor.White);
-			WriteColored($" (tipo: {type})", ConsoleColor.DarkGray);
-			Console.WriteLine();
+			Console.WriteLine($"   ├─── 🔍 Buscando {fullname} (tipo: {type})");
 
 			// Consultar el registro existente
 			string queryUrl = $"{endpoint}?name={Uri.EscapeDataString(fullname)}&type={type}";
@@ -432,27 +413,14 @@ namespace ManageDns
 			string content = recordData.content;
 			bool currentProxied = recordData.proxied;
 
-			// Determinar emoji para el estado actual del proxy (ativo o no)
-			string proxyEmoji = activateCfProxy ? "🔒 ON" : "🔓 OFF";
-			string currentProxyEmoji = currentProxied ? "🔒 ON" : "🔓 OFF";
+			// Determinar emoji para el estado del proxy (activo o no)
+			string proxyEmoji = activateCfProxy ? "🔒" : "🔓";
+			string currentProxyEmoji = currentProxied ? "🔒" : "🔓";
 
 			// Verificar si ya está en el estado deseado
 			if (currentProxied == activateCfProxy)
 			{
-				ConsoleColor statusColor = activateCfProxy ? ConsoleColor.Green : ConsoleColor.Yellow;
-				
-				WriteColored("   ├─", ConsoleColor.DarkGray);
-				Console.Write(" ");
-				WriteColored("ℹ️   Sin cambios", statusColor);
-				Console.Write(" │ ");
-				WriteColored(fullname, ConsoleColor.White);
-				
-				WriteColored(" ya está ", ConsoleColor.DarkGray);
-				Console.Write(proxyEmoji);
-				WriteColored(" (IP: ", ConsoleColor.DarkGray);
-				WriteColored(content, ConsoleColor.Cyan);
-				WriteColored(")", ConsoleColor.DarkGray);
-				Console.WriteLine();
+				Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP: {content})");
 				return;
 			}
 
@@ -494,19 +462,7 @@ namespace ManageDns
 
 				if (updateCode == 200)
 				{
-					string change = $"{currentProxyEmoji} → {proxyEmoji}";
-					
-					WriteColored("   ├─", ConsoleColor.DarkGray);
-					Console.Write(" ");
-					WriteColored("✅ Actualizado", ConsoleColor.Green);
-					Console.Write(" │ ");
-					WriteColored(fullname, ConsoleColor.White);
-					
-					WriteColored($" {change}", ConsoleColor.DarkGray);
-					WriteColored(" (IP: ", ConsoleColor.DarkGray);
-					WriteColored(content, ConsoleColor.Cyan);
-					WriteColored(")", ConsoleColor.DarkGray);
-					Console.WriteLine();
+					Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP: {content})");
 				}
 				else
 				{
@@ -523,27 +479,33 @@ namespace ManageDns
 
 		#region Utilidades de consola
 		/// <summary>
-		/// Registra un mensaje formateado en la consola con marca de tiempo, emoji, nivel de log y color.
+		/// Registra un mensaje formateado en la consola con marca de tiempo, emoji, nivel de log opcional y mensaje.
 		/// </summary>
 		/// <param name="emoji">Emoji descriptivo del estado o acción.</param>
 		/// <param name="level">Nivel de registro o etiqueta del mensaje.</param>
-		/// <param name="color">Color asociado al nivel de log.</param>
 		/// <param name="message">Texto opcional con el detalle del mensaje.</param>
-		static void LogMessage(string emoji, string level, ConsoleColor color, string message)
+		static void LogMessage(string emoji, string level, string message = "")
 		{
 			string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
-			WriteColored($"[{timestamp}] ", ConsoleColor.DarkGray);
-			WriteColored($"{emoji} {level}", color);
-
 			if (string.IsNullOrEmpty(message))
 			{
-				Console.WriteLine();
+				Console.WriteLine($"[{timestamp}] {emoji} {level}");
 			}
 			else
 			{
-				Console.WriteLine($" │ {message}");
+				Console.WriteLine($"[{timestamp}] {emoji} {level} │ {message}");
 			}
+		}
+
+		/// <summary>
+		/// Registra una línea con marca de tiempo y mensaje simple en la consola.
+		/// </summary>
+		/// <param name="message">Mensaje a mostrar.</param>
+		static void LogTimestamp(string message)
+		{
+			string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+			Console.WriteLine($"[{timestamp}] {message}");
 		}
 
 		/// <summary>
@@ -556,19 +518,6 @@ namespace ManageDns
 			if (string.IsNullOrEmpty(value)) return false;
 			value = value.Trim().ToLowerInvariant();
 			return value == "true" || value == "1" || value == "on" || value == "yes";
-		}
-
-		/// <summary>
-		/// Escribe en la consola un texto con un color específico y luego restaura el color original.
-		/// </summary>
-		/// <param name="text">Texto a escribir en la consola.</param>
-		/// <param name="color">Color de consola deseado.</param>
-		static void WriteColored(string text, ConsoleColor color)
-		{
-			var prev = Console.ForegroundColor;
-			Console.ForegroundColor = color;
-			Console.Write(text);
-			Console.ForegroundColor = prev;
 		}
 		#endregion
 	}

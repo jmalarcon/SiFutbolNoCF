@@ -3,7 +3,7 @@
 Este proyecto es una herramienta para mitigar de forma inteligente **los bloqueos dinámicos** impuestos por proveedores de servicios de Internet (ISP) y **La Liga** a Cloudflare en España cada vez que hay fútbol emitido en cerrado.
 
 > [!NOTE]
-> Este proyecto está inspirado en el trabajo de [JoseManuelPedraja/cffootballbypass-docker](https://github.com/JoseManuelPedraja/cffootballbypass-docker), pero ha sido reescrito en .NET 10, modernizado y replanteado por completo para ofrecer mayor flexibilidad, soporte multiplataforma y múltiples formas de ejecución.
+> Este proyecto está inspirado en el trabajo de [JoseManuelPedraja/cffootballbypass-docker](https://github.com/JoseManuelPedraja/cffootballbypass-docker), pero ha sido reescrito en .NET 10 y modernizado para ofrecer mayor flexibilidad, soporte multiplataforma y múltiples formas de ejecución.
 
 ## Para qué sirve SiFutbolNoCF
 
@@ -20,11 +20,11 @@ Este programa consulta constantemente el _endpoint_ facilitado por los amigos de
 - 🚀 **Compilado en .NET 10**: altamente optimizado, moderno y eficiente, y sin dependencias.
 - 🐧💻🍏 **Multiplataforma**: ejecutables independientes de un solo archivo (*single-file*) compilados nativamente para Windows, macOS y Linux (x64 y ARM64).
 - 🔄 **Doble modo de ejecución**:
-  - **Modo Demonio**: ejecución periódica continua en bucle leyendo la configuración de archivos de configuración (`appsettings.json`, secretos de usuario o variables de entorno). Permite también ejecutar una única iteración del bucle (`-1` / `--one`).
-  - **Modo Ejecución Única (One-off)**: Control total desde línea de comandos al proporcionar 6 argumentos para ejecuciones manuales rápidas.
-- 🔑 **Precedencia inteligente de configuración**: resuelve parámetros desde archivos locales (`appsettings.local.json`, para desarrollo y que no vaya nada fuera del repo si haces un _fork_), `appsettings.json`, variables de entorno y *User Secrets* de .NET de forma segura para evitar subir credenciales a repositorios públicos.
-- 🔍 **Auto-detección de Zonas de Cloudflare**: Si no especificas el `CfZoneId`, el sistema lo buscará de manera autónoma utilizando la API de zonas de Cloudflare (para lo cual necesitarás un token de cuenta en vez de un token de perfil).
-- 🎨 **Interfaz de Consola Enriquecida**: Salida interactiva y limpia usando emojis y colores claros del sistema que describen en tiempo real cada paso.
+  - **Modo Demonio**: ejecución periódica continua en bucle leyendo la configuración de archivos de configuración (`appsettings.json`, `appsettings.local.json` o variables de entorno). Permite también ejecutar una única iteración del bucle (`-1` / `--once`).
+  - **Modo Ejecución Única (One-off)**: control total desde línea de comandos al proporcionar 6 argumentos para ejecuciones manuales rápidas.
+- 🔑 **Precedencia inteligente de configuración**: resuelve parámetros desde archivos locales (`appsettings.local.json`, para desarrollo y que no vaya nada fuera del repo si haces un _fork_), `appsettings.json` y variables de entorno de forma segura para evitar subir credenciales a repositorios públicos.
+- 🔍 **Auto-detección de Zonas de Cloudflare**: si no especificas el `CfZoneId`, el sistema lo buscará de manera autónoma utilizando la API de zonas de Cloudflare (para lo cual necesitarás un token de cuenta en vez de un token de perfil).
+- 🎨 **Interfaz de Consola Clara y Jerárquica**: salida estructurada y legible con sangrado en 2 niveles y emojis descriptivos para que se adapte al color nativo de cualquier terminal (macOS, PowerShell, Linux, personalizados...) sin problemas de contraste.
 
 ## Cómo ponerlo en marcha
 
@@ -80,7 +80,7 @@ Si estás ejecutando la aplicación en modo demonio permanente (por ejemplo, en 
 
 ## Cómo configurarlo
 
-La aplicación busca y fusiona la configuración de varias fuentes con el siguiente orden de precedencia: **`appsettings.local.json` > `appsettings.json` > Variables de Entorno > User Secrets de .NET**.
+La aplicación busca y fusiona la configuración de varias fuentes con el siguiente orden de precedencia: **`appsettings.local.json` > `appsettings.json` > Variables de Entorno**.
 
 ### Opciones de configuración globales:
 
@@ -93,7 +93,7 @@ La aplicación busca y fusiona la configuración de varias fuentes con el siguie
 
 ### Estructura de cada dominio bajo `Domains`:
 
-Los dominios se configuran siempre en `appsettings.json` o `appsettings.local.json` (no es posible configurar dominios desde variables de entorno o User Secrets porque son estructuras complejas) y se hace mediante un array de objetos JSON con la siguiente estructura (los nombres son _case insensitive_):
+Los dominios se configuran siempre en `appsettings.json` o `appsettings.local.json` (no es posible configurar dominios desde variables de entorno porque son estructuras complejas) y se hace mediante un array de objetos JSON con la siguiente estructura (los nombres son _case insensitive_):
 
 - `name`: dominio raíz en Cloudflare (ej. `midominio.com`).
 - `record`: subdominio o registro DNS que se modificará (ej. `www`, `api`, o `@` para indicar el dominio raíz).
@@ -175,27 +175,40 @@ jobs:
           STATUS_URL: "https://hayahora.futbol/status.json"
 ```
 
-## Ejemplo de log enviado por la app
+## Ejemplo de log generado por la aplicación
 
-El siguiente ejemplo simula la consola de la aplicación monitoreando dos dominios: uno de ellos funciona de forma correcta (está libre de bloqueos y desactiva/mantiene el proxy) y el otro genera un error porque el registro no se encuentra en la cuenta de Cloudflare asociada. En la consola se verán en color para mayor claridad:
+El siguiente ejemplo muestra la salida estructurada de la consola cubriendo los diferentes estados posibles durante el ciclo de comprobación (detección de configuración, dominios sin cambios, activaciones/desactivaciones conmutadas con éxito, errores de Cloudflare y advertencias de conectividad):
 
 ```text
 [2026-06-09 17:05:00] 🔍 CONFIG │ Auto-detectando ID de zona para midominio.com...
-[2026-06-09 17:05:01] ✅ CONFIG │ ID de zona detectado para midominio.com: 9a8b7c6d5e4f3g2h1i0j
+[2026-06-09 17:05:01] ✅ CONFIG │ ID de zona detectado para midominio.com: 9a5b7d6d5e4u3g2z1i0j
 
-🔍 Chequeando el estado de los dominios...
-   ├─ 🔍 Consultando estado para midominio.com...
-   │  ✅ midominio.com no está bloqueado. Estado activateCfProxy deseado: ACTIVAR.
-   ├─ 🔍 Buscando midominio.com (tipo: A)
-   ├─ ℹ️   Sin cambios │ midominio.com ya está 🔒 (IP: 192.0.2.1)
+[2026-06-09 17:05:03] Consultando el estado de los dominios...
+   ├─ 👀 midominio.com
+   ├─── ✅ Estado: no bloqueado. Estado activateCfProxy deseado: ACTIVAR.
+   ├─── 🔍 Buscando midominio.com (tipo: A)
+   ├─── ℹ️ Sin cambios │ Ya está 🔒 (IP: 192.0.2.1)
 
-   ├─ 🔍 Consultando estado para errortest.com...
-   │  🔴 errortest.com detectado como BLOQUEADO. Estado activateCfProxy deseado: DESACTIVAR.
-   ├─ 🔍 Buscando errortest.com (tipo: A)
-   │  ❌ Error al actualizar Cloudflare para errortest.com: Registro no encontrado. Verifica nombre correcto y tipo de registro
+   ├─ 👀 tiendaonline.es
+   ├─── 🔴 Estado: BLOQUEADO. Estado activateCfProxy deseado: DESACTIVAR.
+   ├─── 🔍 Buscando tiendaonline.es (tipo: A)
+   ├─── ✅ Actualizado │ 🔒 → 🔓 (IP: 198.51.100.24)
 
-[2026-06-09 17:05:03] ✅ Ciclo completado
-[2026-06-09 17:05:03] ⏳ Esperando 300 segundos antes de volver a comprobar...
+   ├─ 👀 blog.midominio.com
+   ├─── ✅ Estado: no bloqueado. Estado activateCfProxy deseado: ACTIVAR.
+   ├─── 🔍 Buscando blog.midominio.com (tipo: CNAME)
+   ├─── ✅ Actualizado │ 🔓 → 🔒 (IP: midominio.com)
+
+   ├─ 👀 errortest.com
+   ├─── 🔴 Estado: BLOQUEADO. Estado activateCfProxy deseado: DESACTIVAR.
+   ├─── 🔍 Buscando errortest.com (tipo: A)
+   ├─── ❌ Error al actualizar Cloudflare para errortest.com: Registro no encontrado. Verifica nombre correcto y tipo de registro
+
+   ├─ 👀 servicio-caido.com
+   ├─── ⚠️ Error al obtener el estado, se omitirá en este ciclo.
+
+[2026-06-09 17:05:05] ✅ Ciclo completado
+[2026-06-09 17:05:05] ⏳ Esperando 300 segundos antes de volver a comprobar...
 ```
 
 ## Preguntas frecuentes

@@ -21,6 +21,11 @@ namespace ManageDns.Models
 		public int IntervalSeconds { get; set; }
 
 		/// <summary>
+		/// Nivel de detalle de los mensajes en consola durante el modo demonio ("ChangesOnly" o "Full").
+		/// </summary>
+		public string Verbosity { get; set; }
+
+		/// <summary>
 		/// URL del endpoint oficial de estado que devuelve las IPs bloqueadas por los operadores.
 		/// </summary>
 		public string StatusUrl { get; set; }

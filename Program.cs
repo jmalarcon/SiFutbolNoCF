@@ -225,18 +225,40 @@ namespace ManageDns
 				}
 			}
 
+			// Determinar si la verbosidad configurada es completa (Full) o filtrada por cambios (ChangesOnly)
+			bool isFullVerbosity = string.Equals(config.Verbosity, "Full", StringComparison.OrdinalIgnoreCase);
+
+			// Bandera para identificar el primer ciclo de comprobación
+			bool isFirstRun = true;
+
 			// 3. Iniciar el bucle de comprobación y sincronización
 			while (true)
 			{
-				Console.WriteLine();
-				LogTimestamp("Descargando estado de IPs bloqueadas...");
+				// Indicar si se deben mostrar todos los detalles del ciclo (primer ciclo o modo Full)
+				bool showCycleDetails = isFirstRun || isFullVerbosity;
+
+				// Contador de cambios aplicados en este ciclo
+				int cycleChangesCount = 0;
+
+				if (showCycleDetails)
+				{
+					Console.WriteLine();
+					LogTimestamp("Descargando estado de IPs bloqueadas...");
+				}
+				else
+				{
+					LogTimestamp("Comprobando estado de IPs bloqueadas...");
+				}
 
 				// Descargar el archivo data.json una única vez por iteración para optimizar ancho de banda
 				HashSet<string> blockedIps;
 				try
 				{
 					blockedIps = await FootballStatusService.FetchBlockedIpsAsync(statusUrl);
-					LogMessage("ℹ️", "ESTADO", $"Total de IPs bloqueadas activamente: {blockedIps.Count}");
+					if (showCycleDetails)
+					{
+						LogMessage("ℹ️", "ESTADO", $"Total de IPs bloqueadas activamente: {blockedIps.Count}");
+					}
 				}
 				catch (Exception ex)
 				{
@@ -247,16 +269,30 @@ namespace ManageDns
 				// Iterar sobre cada uno de los dominios configurados
 				foreach (var dom in domains)
 				{
-					// Imprimir un salto de línea de separación entre dominios
-						Console.WriteLine();
-
 					// Normalizar nombre de registro y tipo de registro
 					string record = string.IsNullOrEmpty(dom.record) ? "@" : dom.record;
 					string type = string.IsNullOrEmpty(dom.type) ? "A" : dom.type;
 					string fullname = (record == "@") ? dom.name : $"{record}.{dom.name}";
 
-					// Imprimir cabecera de nivel 1 con el dominio a evaluar
-					Console.WriteLine($"   ├─ 👀 {fullname} (tipo: {type})");
+					// Controlar si ya se imprimió la cabecera del dominio en este ciclo
+					bool headerPrinted = false;
+
+					// Función local para imprimir la cabecera del dominio si aún no se ha mostrado
+					void EnsureDomainHeader()
+					{
+						if (!headerPrinted)
+						{
+							Console.WriteLine();
+							Console.WriteLine($"   ├─ 👀 {fullname} (tipo: {type})");
+							headerPrinted = true;
+						}
+					}
+
+					// Si corresponde mostrar detalles completos, imprimir cabecera directamente
+					if (showCycleDetails)
+					{
+						EnsureDomainHeader();
+					}
 
 					// Consultar el registro actual en Cloudflare para conocer su estado
 					DnsRecord currentRecord = null;
@@ -266,13 +302,15 @@ namespace ManageDns
 					}
 					catch (Exception ex)
 					{
+						EnsureDomainHeader();
 						Console.WriteLine($"   ├─── ❌ Error al consultar Cloudflare para {fullname}: {ex.Message}");
 						continue;
 					}
 
-					// Si el registro no existe en la zona, saltar al siguiente dominio
+					// Si el registro no existe en la zona, notificar y saltar al siguiente dominio
 					if (currentRecord == null)
 					{
+						EnsureDomainHeader();
 						Console.WriteLine($"   ├─── ⚠️ Registro {fullname} no encontrado en Cloudflare, se omitirá.");
 						continue;
 					}
@@ -280,6 +318,7 @@ namespace ManageDns
 					// Obtener el estado actual del proxy (nube naranja o gris)
 					bool currentProxied = currentRecord.proxied;
 					bool desiredProxy = true;
+					string statusLine = string.Empty;
 
 					if (currentProxied)
 					{
@@ -297,19 +336,19 @@ namespace ManageDns
 							{
 								// Hay bloqueo activo: se debe desactivar el proxy para exponer la IP de origen
 								desiredProxy = false;
-								Console.WriteLine($"   ├─── 🔴 Estado: BLOQUEADO (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.");
+								statusLine = $"🔴 Estado: BLOQUEADO (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.";
 							}
 							else
 							{
 								// No hay bloqueo: mantener el proxy activado
 								desiredProxy = true;
-								Console.WriteLine($"   ├─── ✅ Estado: no bloqueado (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: ACTIVAR.");
+								statusLine = $"✅ Estado: no bloqueado (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: ACTIVAR.";
 							}
 						}
 						else
 						{
 							// Si falló la resolución DNS, conservar el estado actual para evitar cambios involuntarios
-							Console.WriteLine($"   ├─── ⚠️ No se pudieron resolver IPs por DNS para {fullname}, se mantendrá el estado actual.");
+							statusLine = $"⚠️ No se pudieron resolver IPs por DNS para {fullname}, se mantendrá el estado actual.";
 							desiredProxy = currentProxied;
 						}
 					}
@@ -326,13 +365,13 @@ namespace ManageDns
 							{
 								// El partido sigue y las IPs continúan bloqueadas: mantener proxy desactivado
 								desiredProxy = false;
-								Console.WriteLine($"   ├─── 🔴 Estado: BLOQUEO ACTIVO en Cloudflare (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: DESACTIVAR.");
+								statusLine = $"🔴 Estado: BLOQUEO ACTIVO en Cloudflare (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: DESACTIVAR.";
 							}
 							else
 							{
 								// El partido finalizó y las IPs están libres: reactivar el proxy de Cloudflare
 								desiredProxy = true;
-								Console.WriteLine($"   ├─── ✅ Estado: Cloudflare libre de bloqueos (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: ACTIVAR.");
+								statusLine = $"✅ Estado: Cloudflare libre de bloqueos (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: ACTIVAR.";
 							}
 						}
 						else
@@ -343,14 +382,20 @@ namespace ManageDns
 							if (isBlocked)
 							{
 								desiredProxy = false;
-								Console.WriteLine($"   ├─── 🔴 Estado: BLOQUEADO (IPs: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.");
+								statusLine = $"🔴 Estado: BLOQUEADO (IPs: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.";
 							}
 							else
 							{
 								desiredProxy = true;
-								Console.WriteLine($"   ├─── ✅ Estado: no bloqueado. Estado proxy deseado: ACTIVAR.");
+								statusLine = $"✅ Estado: no bloqueado. Estado proxy deseado: ACTIVAR.";
 							}
 						}
+					}
+
+					// Si corresponde mostrar detalles completos, imprimir la línea de estado calculada
+					if (showCycleDetails && !string.IsNullOrEmpty(statusLine))
+					{
+						Console.WriteLine($"   ├─── {statusLine}");
 					}
 
 					// Aplicar la actualización en Cloudflare si el estado deseado difiere del actual
@@ -363,21 +408,38 @@ namespace ManageDns
 
 						if (updated)
 						{
+							// Incrementar el contador de cambios realizados en este ciclo
+							cycleChangesCount++;
+
+							// Asegurar que la cabecera y el motivo se muestren en modo filtrado
+							EnsureDomainHeader();
+							if (!showCycleDetails && !string.IsNullOrEmpty(statusLine))
+							{
+								Console.WriteLine($"   ├─── {statusLine}");
+							}
+
 							Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP origen: {currentRecord.content})");
 						}
 						else
 						{
-							Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP origen: {currentRecord.content})");
+							if (showCycleDetails)
+							{
+								Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP origen: {currentRecord.content})");
+							}
 						}
 					}
 					catch (Exception ex)
 					{
+						EnsureDomainHeader();
 						Console.WriteLine($"   ├─── ❌ Error al actualizar Cloudflare para {fullname}: {ex.Message}");
 					}
 				}
 
-				// Notificar que la iteración de todos los dominios ha concluido
-				LogMessage("✅", "Ciclo completado");
+				// Notificar finalización del ciclo si se muestran detalles o si hubo cambios aplicados
+				if (showCycleDetails || cycleChangesCount > 0)
+				{
+					LogMessage("✅", "Ciclo completado");
+				}
 
 				// Si se ejecutó en modo de ciclo único (-1 o --once), salir del bucle
 				if (runOnce)
@@ -386,7 +448,14 @@ namespace ManageDns
 				}
 
 				// Esperar el intervalo configurado antes de comenzar la siguiente iteración
-				LogMessage("⏳", $"Esperando {intervalSeconds} segundos antes de volver a comprobar...");
+				if (showCycleDetails)
+				{
+					LogMessage("⏳", $"Esperando {intervalSeconds} segundos antes de volver a comprobar...");
+				}
+
+				// Marcar que el primer ciclo ha concluido
+				isFirstRun = false;
+
 				await Task.Delay(intervalSeconds * 1000);
 			}
 		}

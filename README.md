@@ -94,6 +94,7 @@ La aplicación busca y fusiona la configuración de varias fuentes con el siguie
 |---|---|---|---|
 | `CfApiToken` | String | Token de autenticación de Cloudflare (tipo portador / *Bearer*). | *(Requerido)* |
 | `IntervalSeconds` | Entero | Tiempo en segundos de espera entre ciclos en el modo continuo daemon. | `300` |
+| `Verbosity` | String | Nivel de detalle de los mensajes por consola en modo daemon: `ChangesOnly` (muestra ciclo inicial y luego solo cambios o errores) o `Full` (muestra todos los detalles en cada ciclo). | `ChangesOnly` |
 | `StatusUrl` | String | Endpoint de consulta del estado de bloqueo de IPs. Si cambiase en el futuro se podría modificar aquí. No es necesario ponerlo por defecto. | `https://hayahora.futbol/estado/data.json` |
 | `Domains` | Lista | Array de objetos de dominios a monitorear y conmutar. | `[]` |
 
@@ -111,6 +112,7 @@ Los dominios se configuran siempre en `appsettings.json` o `appsettings.local.js
 {
   "CfApiToken": "TU_CLOUDFLARE_API_TOKEN",
   "IntervalSeconds": 300,
+  "Verbosity": "ChangesOnly",
   "StatusUrl": "https://hayahora.futbol/estado/data.json",
   "Domains": [
     {

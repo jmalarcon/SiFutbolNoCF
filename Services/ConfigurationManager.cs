@@ -114,6 +114,24 @@ namespace ManageDns.Services
 				finalConfig.IntervalSeconds = 300;
 			}
 
+			// Resolver el nivel de verbosidad de logs (Local > Base > VERBOSITY)
+			string verbosityStr = ResolveStringSetting(
+				localConfig?.Verbosity,
+				baseConfig?.Verbosity,
+				"VERBOSITY",
+				""
+			);
+
+			// Establecer 'Full' si se solicita explícitamente; en cualquier otro caso usar 'ChangesOnly' por defecto
+			if (!string.IsNullOrEmpty(verbosityStr) && verbosityStr.Trim().Equals("full", StringComparison.OrdinalIgnoreCase))
+			{
+				finalConfig.Verbosity = "Full";
+			}
+			else
+			{
+				finalConfig.Verbosity = "ChangesOnly";
+			}
+
 			// Resolver la lista de dominios: dar preferencia a los dominios definidos en el archivo local si existen
 			if (localConfig?.Domains != null && localConfig.Domains.Count > 0)
 			{

@@ -44,7 +44,7 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
 ## 3. Modos de Ejecución y Configuración
 
 ### Modos de Ejecución
-1. **Modo Demonio Continuo** (sin argumentos): Bucle infinito que comprueba y sincroniza el estado de los dominios cada `IntervalSeconds` segundos.
+1. **Modo Demonio Continuo** (sin argumentos): Bucle infinito que comprueba y sincroniza el estado de los dominios periódicamente. Aplica intervalos adaptativos inteligentes si `AdaptiveInterval` está activo (por defecto `true`), o intervalos fijos de `IntervalSeconds` segundos si se desactiva.
 2. **Modo de Ejecución Única** (`-1` o `--once`): Ejecuta una sola iteración completa del ciclo y finaliza (ideal para cron jobs, Azure WebJobs o GitHub Actions).
 3. **Modo Directo / One-Off** (6 argumentos posicionales): Actualización inmediata de un registro sin depender de archivos de configuración:
    ```text
@@ -52,11 +52,16 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
    ```
 4. **Modo Ayuda** (`-?` o `--help`): Muestra la guía de uso en consola.
 
+### Lógica de Intervalos Adaptativos (`AdaptiveInterval`)
+- **Franja Valle (01:00 a 13:00)**: Pausa larga de 30 minutos (1800 s) ajustada a las 13:00 para ahorrar peticiones cuando no hay partidos.
+- **Franja Activa (13:00 a 01:00)**: Intervalo estándar corto (`IntervalSeconds`, por defecto 300 s) para detectar bloqueos con rapidez.
+- **Bloqueo Activo (partido en curso)**: Pausa inicial de 90 minutos (5400 s) tras detectar el bloqueo (los partidos duran > 105 min). Superados los 90 min, vuelve a comprobación frecuente para reactivar el proxy de Cloudflare en cuanto finalice.
+
 ### Precedencia y Búsqueda de Configuración
 La aplicación carga los archivos JSON directamente desde su directorio base de ejecución (`AppDomain.CurrentDomain.BaseDirectory`), resolviendo sus valores evaluando las fuentes en este orden estricto de prioridad:
 1. `appsettings.local.json` (fichero local de desarrollo, excluido de Git y configurado en `.csproj` para copiarse al directorio de salida solo en compilaciones `Debug` y nunca al publicar).
 2. `appsettings.json` (fichero de configuración base distribuible).
-3. Variables de Entorno (`CF_API_TOKEN`, `STATUS_URL`, `INTERVAL_SECONDS`, `VERBOSITY`).
+3. Variables de Entorno (`CF_API_TOKEN`, `STATUS_URL`, `INTERVAL_SECONDS`, `ADAPTIVE_INTERVAL`, `VERBOSITY`).
 
 ---
 
@@ -127,3 +132,4 @@ Usa español de España con tuteo.
 ### 4.9. Instrucciones adicionales
 - Siempre debes ofrecer un plan de acción y aclarar con el usuario todas las dudas importantes antes de tocar código, salvo que sea algo trivial o de pequeño impacto.
 - Despues de cada actuación relevante sobre el proyecto actualiza los archivos `AGENTS.md` (info desarrolladores y agentes IA) y `README.md` (info pública) para garantizar que tiene al día toda la información importante del proyecto.
+- Si se ha añadido una nueva funcionalidad deberás aumentar la versión "minor" en `Properties/AssemblyInfo.cs`, y la versión "mayor" si se introduce un cambio que rompe la compatibilidad hacia atrás (Semantic Versoning).

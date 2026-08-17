@@ -21,6 +21,11 @@ namespace ManageDns.Models
 		public int IntervalSeconds { get; set; }
 
 		/// <summary>
+		/// Indica si se debe ajustar el intervalo de comprobación de forma adaptativa según la hora y el estado de bloqueo.
+		/// </summary>
+		public bool? AdaptiveInterval { get; set; }
+
+		/// <summary>
 		/// Nivel de detalle de los mensajes en consola durante el modo demonio ("ChangesOnly" o "Full").
 		/// </summary>
 		public string Verbosity { get; set; }

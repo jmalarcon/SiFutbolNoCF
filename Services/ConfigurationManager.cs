@@ -114,6 +114,30 @@ namespace ManageDns.Services
 				finalConfig.IntervalSeconds = 300;
 			}
 
+			// Resolver el modo de intervalo adaptativo (Local > Base > ADAPTIVE_INTERVAL)
+			string adaptiveLocal = localConfig?.AdaptiveInterval.HasValue == true ? localConfig.AdaptiveInterval.Value.ToString() : null;
+			string adaptiveBase = baseConfig?.AdaptiveInterval.HasValue == true ? baseConfig.AdaptiveInterval.Value.ToString() : null;
+			string adaptiveStr = ResolveStringSetting(
+				adaptiveLocal,
+				adaptiveBase,
+				"ADAPTIVE_INTERVAL",
+				""
+			);
+
+			// El valor por defecto es true si no se especifica explícitamente lo contrario (false, 0, no, off)
+			if (string.IsNullOrEmpty(adaptiveStr))
+			{
+				finalConfig.AdaptiveInterval = true;
+			}
+			else
+			{
+				// Evaluar si el usuario desactivó explícitamente los intervalos adaptativos
+				finalConfig.AdaptiveInterval = !adaptiveStr.Trim().Equals("false", StringComparison.OrdinalIgnoreCase)
+				                               && !adaptiveStr.Trim().Equals("0", StringComparison.OrdinalIgnoreCase)
+				                               && !adaptiveStr.Trim().Equals("no", StringComparison.OrdinalIgnoreCase)
+				                               && !adaptiveStr.Trim().Equals("off", StringComparison.OrdinalIgnoreCase);
+			}
+
 			// Resolver el nivel de verbosidad de logs (Local > Base > VERBOSITY)
 			string verbosityStr = ResolveStringSetting(
 				localConfig?.Verbosity,

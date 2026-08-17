@@ -184,6 +184,7 @@ namespace ManageDns
 			string cfApiToken = config.CfApiToken;
 			string statusUrl = config.StatusUrl;
 			int intervalSeconds = config.IntervalSeconds;
+			bool isAdaptive = config.AdaptiveInterval ?? true;
 			var domains = config.Domains;
 
 			// Validar la presencia obligatoria del token de API de Cloudflare
@@ -231,6 +232,9 @@ namespace ManageDns
 			// Bandera para identificar el primer ciclo de comprobación
 			bool isFirstRun = true;
 
+			// Registrar el instante en que se detectó el inicio del bloqueo activo
+			DateTime? blockStartTime = null;
+
 			// 3. Iniciar el bucle de comprobación y sincronización
 			while (true)
 			{
@@ -265,6 +269,9 @@ namespace ManageDns
 					LogMessage("⚠️", "ESTADO", $"Error al consultar IPs bloqueadas: {ex.Message}");
 					blockedIps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 				}
+
+				// Bandera para determinar si existe al menos un dominio con bloqueo activo en este ciclo
+				bool anyDomainBlocked = false;
 
 				// Iterar sobre cada uno de los dominios configurados
 				foreach (var dom in domains)
@@ -336,6 +343,7 @@ namespace ManageDns
 							{
 								// Hay bloqueo activo: se debe desactivar el proxy para exponer la IP de origen
 								desiredProxy = false;
+								anyDomainBlocked = true;
 								statusLine = $"🔴 Estado: BLOQUEADO (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.";
 							}
 							else
@@ -365,6 +373,7 @@ namespace ManageDns
 							{
 								// El partido sigue y las IPs continúan bloqueadas: mantener proxy desactivado
 								desiredProxy = false;
+								anyDomainBlocked = true;
 								statusLine = $"🔴 Estado: BLOQUEO ACTIVO en Cloudflare (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: DESACTIVAR.";
 							}
 							else
@@ -382,6 +391,7 @@ namespace ManageDns
 							if (isBlocked)
 							{
 								desiredProxy = false;
+								anyDomainBlocked = true;
 								statusLine = $"🔴 Estado: BLOQUEADO (IPs: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.";
 							}
 							else
@@ -435,6 +445,18 @@ namespace ManageDns
 					}
 				}
 
+				// Actualizar el registro temporal de bloqueo activo
+				if (anyDomainBlocked)
+				{
+					// Si es la primera iteración que detecta el bloqueo, fijar la marca de tiempo de inicio
+					blockStartTime ??= DateTime.Now;
+				}
+				else
+				{
+					// Si ya no hay dominios bloqueados, resetear la marca de inicio de bloqueo
+					blockStartTime = null;
+				}
+
 				// Notificar finalización del ciclo si se muestran detalles o si hubo cambios aplicados
 				if (showCycleDetails || cycleChangesCount > 0)
 				{
@@ -447,17 +469,101 @@ namespace ManageDns
 					break;
 				}
 
-				// Esperar el intervalo configurado antes de comenzar la siguiente iteración
+				// Calcular el tiempo de espera hasta la siguiente comprobación
+				int delaySeconds = CalculateNextDelaySeconds(isAdaptive, intervalSeconds, anyDomainBlocked, blockStartTime, out string delayReason);
+
+				// Mostrar el mensaje con el intervalo y motivo si corresponde la verbosidad
 				if (showCycleDetails)
 				{
-					LogMessage("⏳", $"Esperando {intervalSeconds} segundos antes de volver a comprobar...");
+					int delayMinutes = delaySeconds / 60;
+					if (delayMinutes > 0)
+					{
+						LogMessage("⏳", $"Esperando {delayMinutes} min ({delaySeconds}s) antes de volver a comprobar │ {delayReason}");
+					}
+					else
+					{
+						LogMessage("⏳", $"Esperando {delaySeconds} segundos antes de volver a comprobar │ {delayReason}");
+					}
 				}
 
 				// Marcar que el primer ciclo ha concluido
 				isFirstRun = false;
 
-				await Task.Delay(intervalSeconds * 1000);
+				await Task.Delay(delaySeconds * 1000);
 			}
+		}
+
+		/// <summary>
+		/// Calcula el número de segundos de espera para el siguiente ciclo según la hora y el estado de bloqueo.
+		/// </summary>
+		/// <remarks>
+		/// Aplica una optimización dinámica para reducir comprobaciones innecesarias:
+		/// 1. Si no hay bloqueo y es franja valle (01:00 - 13:00): espera 30 minutos (1800 s) ajustados a las 13:00.
+		/// 2. Si no hay bloqueo y es franja activa (13:00 - 01:00): espera el intervalo base configurado (ej. 300 s).
+		/// 3. Si hay bloqueo activo: como los partidos duran más de 105 minutos y la web sigue operativa directamente,
+		///    aplica una pausa inicial de 90 minutos (5400 s) y posteriormente vuelve al intervalo base para reactivar el proxy.
+		/// </remarks>
+		/// <param name="isAdaptive">Indica si el modo adaptativo está activado.</param>
+		/// <param name="baseIntervalSeconds">Intervalo base configurado en segundos.</param>
+		/// <param name="isBlocked">Indica si hay al menos un dominio bloqueado activamente.</param>
+		/// <param name="blockStartTime">Momento en el que se inició el bloqueo activo, o null si no hay bloqueo.</param>
+		/// <param name="reason">Motivo explicativo del cálculo para los mensajes de log.</param>
+		/// <returns>Segundos a esperar antes del siguiente ciclo.</returns>
+		static int CalculateNextDelaySeconds(bool isAdaptive, int baseIntervalSeconds, bool isBlocked, DateTime? blockStartTime, out string reason)
+		{
+			// Si el modo adaptativo no está activo, usar siempre el intervalo base fijo
+			if (!isAdaptive)
+			{
+				reason = "Intervalo fijo";
+				return baseIntervalSeconds;
+			}
+
+			// Caso 1: Hay un bloqueo activo (partido de fútbol en curso)
+			if (isBlocked && blockStartTime.HasValue)
+			{
+				// Calcular los minutos transcurridos desde que se detectó el inicio del bloqueo
+				double minutesSinceBlock = (DateTime.Now - blockStartTime.Value).TotalMinutes;
+
+				// Si lleva menos de 90 minutos bloqueado, aplicar pausa larga (los partidos duran más de 105 minutos)
+				if (minutesSinceBlock < 90)
+				{
+					reason = "Bloqueo activo (partido en curso, pausa de 90 min)";
+					return 90 * 60; // 5400 segundos
+				}
+
+				// Superados los 90 minutos de bloqueo, volver a intervalo corto para detectar el fin del partido
+				reason = "Bloqueo prolongado (> 90 min, comprobación frecuente)";
+				return baseIntervalSeconds;
+			}
+
+			// Caso 2: No hay bloqueo activo. Evaluar la franja horaria local
+			DateTime now = DateTime.Now;
+			int hour = now.Hour;
+
+			// Franja valle: de 01:00 a 13:00 (muy baja probabilidad de partidos de fútbol)
+			if (hour >= 1 && hour < 13)
+			{
+				// Intervalo base para franja valle: 30 minutos (1800 segundos)
+				int valleyIntervalSeconds = 1800;
+
+				// Calcular cuándo son las 13:00 de hoy para no retrasar el inicio de la franja activa
+				DateTime targetTime = new DateTime(now.Year, now.Month, now.Day, 13, 0, 0, now.Kind);
+				double secondsUntilTarget = (targetTime - now).TotalSeconds;
+
+				// Si el intervalo normal sobrepasa las 13:00, ajustar exactamente hasta las 13:00
+				if (secondsUntilTarget > 0 && secondsUntilTarget < valleyIntervalSeconds)
+				{
+					reason = $"Franja valle (ajuste a inicio de franja activa a las 13:00: {(int)secondsUntilTarget / 60} min)";
+					return Math.Max((int)secondsUntilTarget, baseIntervalSeconds);
+				}
+
+				reason = "Franja valle (01:00 - 13:00, pausa de 30 min)";
+				return valleyIntervalSeconds;
+			}
+
+			// Franja activa: de 13:00 a 01:00 (horario habitual de emisión de partidos)
+			reason = "Franja activa (13:00 - 01:00, comprobación frecuente)";
+			return baseIntervalSeconds;
 		}
 
 		#region Utilidades de consola

@@ -93,10 +93,23 @@ La aplicación busca y fusiona la configuración de varias fuentes con el siguie
 | Opción | Tipo | Descripción | Valor por defecto |
 |---|---|---|---|
 | `CfApiToken` | String | Token de autenticación de Cloudflare (tipo portador / *Bearer*). | *(Requerido)* |
-| `IntervalSeconds` | Entero | Tiempo en segundos de espera entre ciclos en el modo continuo daemon. | `300` |
+| `IntervalSeconds` | Entero | Tiempo en segundos de espera base entre ciclos en el modo continuo daemon. | `300` |
+| `AdaptiveInterval` | Booleano | Ajusta inteligentemente el tiempo de espera según la hora y la duración de partidos para reducir comprobaciones innecesarias (ver detalles más abajo). | `true` |
 | `Verbosity` | String | Nivel de detalle de los mensajes por consola en modo daemon: `ChangesOnly` (muestra ciclo inicial y luego solo cambios o errores) o `Full` (muestra todos los detalles en cada ciclo). | `ChangesOnly` |
 | `StatusUrl` | String | Endpoint de consulta del estado de bloqueo de IPs. Si cambiase en el futuro se podría modificar aquí. No es necesario ponerlo por defecto. | `https://hayahora.futbol/estado/data.json` |
 | `Domains` | Lista | Array de objetos de dominios a monitorear y conmutar. | `[]` |
+
+### Funcionamiento del Modo Adaptativo (`AdaptiveInterval`):
+Cuando `AdaptiveInterval` está activo (valor por defecto `true`), la aplicación optimiza dinámicamente las pausas entre comprobaciones:
+
+1. **Franja Valle (01:00 a 13:00 hora local)**: Debido a la ausencia de partidos en directo durante madrugadas y mañanas, la espera se eleva a **30 minutos** (1800 s), ajustándose automáticamente al llegar a las 13:00 para no retrasar la detección vespertina.
+2. **Franja Activa (13:00 a 01:00 hora local)**: Periodo con emisión habitual de partidos. Comprueba el estado con la frecuencia estándar configurada en `IntervalSeconds` (por defecto **5 minutos** / 300 s).
+3. **Bloqueo Activo (partido en curso)**: Al detectarse un bloqueo y desactivar el proxy, el servidor expone su IP de origen y la web continúa funcionando con normalidad. Como un partido dura un mínimo de 105 minutos (90 min + descanso), la aplicación aplica una pausa inicial de **90 minutos** sin peticiones innecesarias. Transcurridos esos 90 minutos, vuelve a comprobar con frecuencia corta para restaurar el proxy de Cloudflare en cuanto finalice el partido.
+
+Si se desactiva (`AdaptiveInterval: false`), la aplicación utilizará siempre el valor fijo de `IntervalSeconds`.
+
+>[!WARNING]
+>Debido a estas optimizaciones, dependientes de la zona horaria de España, es **muy importante** que el programa se ejecute en un ordenador que esté en la zona horaria de España.
 
 ### Estructura de cada dominio bajo `Domains`:
 
@@ -112,6 +125,7 @@ Los dominios se configuran siempre en `appsettings.json` o `appsettings.local.js
 {
   "CfApiToken": "TU_CLOUDFLARE_API_TOKEN",
   "IntervalSeconds": 300,
+  "AdaptiveInterval": true,
   "Verbosity": "ChangesOnly",
   "StatusUrl": "https://hayahora.futbol/estado/data.json",
   "Domains": [

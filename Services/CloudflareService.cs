@@ -5,9 +5,9 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using ManageDns.Models;
+using SiFutbolNoCF.Models;
 
-namespace ManageDns.Services
+namespace SiFutbolNoCF.Services
 {
 	/// <summary>
 	/// Servicio estático para la comunicación e interactuación con la API REST v4 de Cloudflare.

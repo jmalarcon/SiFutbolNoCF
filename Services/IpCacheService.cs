@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace ManageDns.Services
+namespace SiFutbolNoCF.Services
 {
 	/// <summary>
 	/// Servicio estático encargado de la gestión y persistencia local en disco de las IPs de Cloudflare conocidas para cada dominio.

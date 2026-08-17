@@ -5,7 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
-namespace ManageDns.Services
+namespace SiFutbolNoCF.Services
 {
 	/// <summary>
 	/// Servicio estático responsable de la resolución de nombres DNS para dominios y subdominios.

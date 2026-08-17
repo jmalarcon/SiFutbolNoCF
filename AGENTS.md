@@ -14,30 +14,40 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
 3. **Persistencia de IPs de Cloudflare**: Almacena las IPs conocidas de Cloudflare en `.sifutbolnocf.cache.json` para conservarlas incluso cuando el proxy esté desactivado o tras reinicios del proceso.
 4. **Si hay bloqueo**: Si alguna de las IPs de Cloudflare del dominio está bloqueada, desactiva de inmediato el *proxy* de Cloudflare (cambia la "nube naranja" a "nube gris"), exponiendo temporalmente la IP original del servidor.
 5. **Cuando termina el bloqueo**: Si las IPs de Cloudflare ya no aparecen bloqueadas en el *endpoint*, reactiva el *proxy* de Cloudflare (vuelve la "nube naranja") para restaurar la protección CDN y certificados.
+6. **Notificaciones**: Si las alertas están habilitadas (ej. Telegram), envía notificaciones consolidadas por ciclo detallando todos los dominios modificados.
 
 ---
 
-## 2. Stack Tecnológico y Arquitectura
+## 2. Stack Tecnológico y Estructura del Proyecto
 
 - **Plataforma**: .NET 10.0 (`net10.0`), C#.
+- **Espacio de Nombres Principal**: `SiFutbolNoCF` (con sub-espacios `SiFutbolNoCF.Models`, `SiFutbolNoCF.Models.Notifications`, `SiFutbolNoCF.Services`, `SiFutbolNoCF.Services.Notifications`).
 - **Filosofía**: **Zero-Dependencies**. Siempre que sea posible y no complique innecesariamente el código utiliza exclusivamente la librería estándar de .NET (BCL: `System.Text.Json`, `System.Net.Http`, etc.) sin añadir paquetes NuGet de terceros. Si hay opciones de paquetes mejores, explícalas antes de utilizarlas y que decida el usuario. Si se utiliza alguna, justificarlo en `AGENTS.md`.
 - **Compilación Multiplataforma**: Generación de binarios autónomos de un solo archivo (*single-file self-contained*) para Windows, Linux y macOS (arquitecturas `x64` y `arm64`).
 
-### Estructura del Código
-- [`Program.cs`](Program.cs): Punto de entrada, procesamiento de argumentos CLI, interfaz en consola y orquestación de servicios.
-- **`Models/`**: Modelos de datos del sistema:
-  - [`AppSettings.cs`](Models/AppSettings.cs): Modelos de configuración (`AppSettings`, `DomainConfig`).
-  - [`CloudflareModels.cs`](Models/CloudflareModels.cs): Modelos de respuesta de la API de Cloudflare (`CloudflareResponse`, `DnsRecord`, etc.).
-- **`Services/`**: Servicios especializados con responsabilidad única:
-  - [`ConfigurationManager.cs`](Services/ConfigurationManager.cs): Gestión y resolución de la configuración combinando archivos JSON y variables de entorno.
-  - [`CloudflareService.cs`](Services/CloudflareService.cs): Operaciones con la API v4 de Cloudflare (búsqueda de zonas, consulta y actualización de registros DNS).
-  - [`FootballStatusService.cs`](Services/FootballStatusService.cs): Descarga del endpoint `data.json` y extracción de IPs bloqueadas con `JsonDocument`.
-  - [`DnsResolverService.cs`](Services/DnsResolverService.cs): Resolución DNS recursiva de hostnames a IPs.
-  - [`IpCacheService.cs`](Services/IpCacheService.cs): Persistencia y gestión de la caché local de IPs en `.sifutbolnocf.cache.json`.
-- [`SiFutbolNoCF.csproj`](SiFutbolNoCF.csproj): Definición del proyecto, propiedades de compilación y recursos embebidos.
-- [`build.bat`](build.bat): Script Batch (Windows) para compilación y empaquetado desatendido en todas las plataformas soportadas hacia `./build/<plataforma>`.
-- [`build.sh`](build.sh): Script Bash (Linux/macOS) para compilación y empaquetado desatendido en todas las plataformas soportadas hacia `./build/<plataforma>`.
-- [`appsettings.json`](appsettings.json): Plantilla base de configuración para distribución.
+### Organización de Carpetas y Archivos Clave
+- [`Program.cs`](Program.cs): Punto de entrada (`SiFutbolNoCF.Program`), procesamiento de argumentos CLI, interfaz en consola y orquestación del bucle principal de monitorización.
+- **`Models/`**: Modelos de datos del dominio y configuración global (`AppSettings`, `DomainConfig`, respuestas de Cloudflare).
+  - **`Models/Notifications/`**: Modelos de eventos agrupados por ciclo (`NotificationBatchEvent`, `DomainChangeInfo`, `NotificationResult`) y clases de configuración específicas de cada canal (ej. `TelegramSettings.cs`).
+- **`Services/`**: Servicios de negocio especializados con responsabilidad única (completamente desacoplados de la consola):
+  - Gestión y resolución de configuración, cliente API de Cloudflare, descarga de estado de bloqueos, resolución DNS y persistencia en caché de disco.
+  - **`Services/Notifications/`**: Arquitectura de notificaciones: interfaz `INotificationProvider`, implementaciones de canal (ej. `TelegramNotificationProvider`) y la fachada `NotificationService`.
+- **Scripts y Configuración**:
+  - [`build.bat`](build.bat) y [`build.sh`](build.sh): Scripts para compilación y empaquetado desatendido hacia `./build/<plataforma>`.
+  - [`appsettings.json`](appsettings.json) y [`appsettings.local.json`](appsettings.local.json): Plantillas y archivos de configuración.
+
+### Guía para Agregar Nuevos Proveedores de Notificación
+Para extender el sistema con nuevos canales (ej. Discord, Email, Slack, Webhooks):
+1. **Crear Configuración**: Añadir `Models/Notifications/<Canal>Settings.cs` con sus propiedades y método estático `Load(JsonElement?)` para resolver JSON y variables de entorno.
+2. **Crear Proveedor**: Añadir `Services/Notifications/<Canal>NotificationProvider.cs` implementando `INotificationProvider`:
+   - Propiedades `Name` e `IsEnabled`.
+   - Constructor que recibe `Dictionary<string, JsonElement> notificationsConfig`.
+   - Método `SendAsync(NotificationBatchEvent batchEvent)`.
+3. **Registrar en la Fachada**: Añadir una sola línea en el constructor principal de `Services/Notifications/NotificationService.cs`:
+   ```csharp
+   _providers.Add(new <Canal>NotificationProvider(notificationConfigs));
+   ```
+4. **Configuración y Documentación**: Añadir la sección plantilla en `appsettings.json` y documentar sus variables de entorno en `README.md`.
 
 ---
 
@@ -61,7 +71,7 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
 La aplicación carga los archivos JSON directamente desde su directorio base de ejecución (`AppDomain.CurrentDomain.BaseDirectory`), resolviendo sus valores evaluando las fuentes en este orden estricto de prioridad:
 1. `appsettings.local.json` (fichero local de desarrollo, excluido de Git y configurado en `.csproj` para copiarse al directorio de salida solo en compilaciones `Debug` y nunca al publicar).
 2. `appsettings.json` (fichero de configuración base distribuible).
-3. Variables de Entorno (`CF_API_TOKEN`, `STATUS_URL`, `INTERVAL_SECONDS`, `ADAPTIVE_INTERVAL`, `VERBOSITY`).
+3. Variables de Entorno (`CF_API_TOKEN`, `STATUS_URL`, `INTERVAL_SECONDS`, `ADAPTIVE_INTERVAL`, `VERBOSITY`, `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
 
 ---
 
@@ -101,7 +111,7 @@ Cualquier cambio o adición de código debe adherirse rigurosamente a las siguie
 - Conservar el formato visual estándar de la consola:
   - **Color neutro por defecto**: No forzar colores de consola (`ConsoleColor` / ANSI foreground) para garantizar un contraste perfecto y natural en cualquier terminal (fondo negro, blanco de macOS, azul de PowerShell, etc.).
   - **Jerarquía y sangrado en 2 niveles**: Uso de `   ├─ 👀 <dominio>` para la cabecera del dominio e `   ├─── ` para las operaciones subordinadas.
-  - **Emojis descriptivos con soporte UTF-8 (`Console.OutputEncoding = Encoding.UTF8`)**: `🔍`, `✅`, `❌`, `⚠️`, `⏳`, `🔒`, `🔓`, `🔴`, `👀`, `ℹ️`.
+  - **Emojis descriptivos con soporte UTF-8 (`Console.OutputEncoding = Encoding.UTF8`)**: `🔍`, `✅`, `❌`, `⚠️`, `⏳`, `🔒`, `🔓`, `🔴`, `👀`, `ℹ️`, `📱`.
   - **Mensajes concisos y directos**, evitando redundancias de nombres de dominio en las sub-ramas.
 
 ### 4.7. Responsabilidad Única y Desacoplamiento de UI

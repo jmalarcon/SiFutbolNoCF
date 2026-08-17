@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using ManageDns.Models;
-using ManageDns.Services;
+using SiFutbolNoCF.Models;
+using SiFutbolNoCF.Models.Notifications;
+using SiFutbolNoCF.Services;
+using SiFutbolNoCF.Services.Notifications;
 
-namespace ManageDns
+namespace SiFutbolNoCF
 {
 	/// <summary>
 	/// Clase principal y punto de entrada de la aplicación SiFutbolNoCF.
@@ -65,6 +67,9 @@ namespace ManageDns
 			Console.WriteLine("Funcionalidad:");
 			Console.WriteLine("  Este programa ayuda a mitigar los bloqueos de ISP (por culpa de La Liga cuando hay fútbol)");
 			Console.WriteLine("  activando o desactivando automáticamente el proxy de Cloudflare (nube naranja) para los registros DNS.");
+			Console.WriteLine("  Además envia notificaciones cuando cambia el estado de cualquier dominio en CloudFlare.");
+			Console.WriteLine();
+			Console.WriteLine(" Consulta todos los detalles y características en https://github.com/jmalarcon/SiFutbolNoCF/.");
 			Console.WriteLine();
 			Console.WriteLine("Modos de Funcionamiento:");
 			Console.WriteLine("  1. Modo Demonio (Bucle Continuo o Único):");
@@ -131,6 +136,48 @@ namespace ManageDns
 				if (updated)
 				{
 					Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP origen: {currentRecord.content})");
+
+					// Intentar enviar alerta si el usuario tiene notificaciones configuradas en su entorno
+					try
+					{
+						var config = ConfigurationManager.LoadConfiguration();
+						var notificationService = new NotificationService(config?.Notifications);
+						if (notificationService.HasEnabledProviders)
+						{
+							var oneOffChange = new List<DomainChangeInfo>
+							{
+								new DomainChangeInfo
+								{
+									Domain = domain,
+									Record = record,
+									Fullname = fullname,
+									RecordType = type,
+									PreviousProxied = currentRecord.proxied,
+									NewProxied = activateCfProxy,
+									OriginIp = currentRecord.content,
+									CloudflareIps = new List<string>(),
+									Reason = "Ejecución manual One-off"
+								}
+							};
+
+							var notifResults = await notificationService.SendBatchNotificationAsync(oneOffChange);
+							foreach (var res in notifResults)
+							{
+								if (res.Success)
+								{
+									Console.WriteLine($"   ├─── 📱 Alerta enviada por {res.ProviderName}");
+								}
+								else
+								{
+									Console.WriteLine($"   ├─── ⚠️ Error al enviar alerta por {res.ProviderName}: {res.ErrorMessage}");
+								}
+							}
+						}
+					}
+					catch
+					{
+						// Ignorar fallos de resolución de alertas en modo manual one-off
+					}
 				}
 				else
 				{
@@ -226,6 +273,9 @@ namespace ManageDns
 				}
 			}
 
+			// Inicializar el servicio de notificaciones con la configuración resuelta
+			var notificationService = new NotificationService(config.Notifications);
+
 			// Determinar si la verbosidad configurada es completa (Full) o filtrada por cambios (ChangesOnly)
 			bool isFullVerbosity = string.Equals(config.Verbosity, "Full", StringComparison.OrdinalIgnoreCase);
 
@@ -243,6 +293,9 @@ namespace ManageDns
 
 				// Contador de cambios aplicados en este ciclo
 				int cycleChangesCount = 0;
+
+				// Lista para consolidar los cambios de estado ocurridos en este ciclo para la notificación agrupada
+				var cycleChanges = new List<DomainChangeInfo>();
 
 				if (showCycleDetails)
 				{
@@ -326,12 +379,14 @@ namespace ManageDns
 					bool currentProxied = currentRecord.proxied;
 					bool desiredProxy = true;
 					string statusLine = string.Empty;
+					List<string> relevantIps = new List<string>();
 
 					if (currentProxied)
 					{
 						// ESCENARIO 1: El proxy está activo en Cloudflare.
 						// El DNS público resuelve a las direcciones IP de Cloudflare.
 						var resolvedIps = await DnsResolverService.ResolveHostIpsAsync(fullname);
+						relevantIps = resolvedIps;
 						if (resolvedIps.Count > 0)
 						{
 							// Guardar las IPs de Cloudflare detectadas en la caché persistente para recordarlas si se desactiva el proxy
@@ -367,6 +422,8 @@ namespace ManageDns
 						var cachedIps = IpCacheService.GetIps(fullname);
 						if (cachedIps != null && cachedIps.Count > 0)
 						{
+							relevantIps = cachedIps;
+
 							// Comprobar si las IPs de Cloudflare que le corresponden a este dominio siguen bloqueadas
 							bool isBlocked = cachedIps.Any(ip => blockedIps.Contains(ip));
 							if (isBlocked)
@@ -387,6 +444,7 @@ namespace ManageDns
 						{
 							// Si es un arranque en frío sin historial en caché, resolver el dominio por DNS
 							var resolvedIps = await DnsResolverService.ResolveHostIpsAsync(fullname);
+							relevantIps = resolvedIps;
 							bool isBlocked = resolvedIps.Count > 0 && resolvedIps.Any(ip => blockedIps.Contains(ip));
 							if (isBlocked)
 							{
@@ -429,6 +487,20 @@ namespace ManageDns
 							}
 
 							Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP origen: {currentRecord.content})");
+
+							// Registrar el cambio para el lote de alertas consolidado
+							cycleChanges.Add(new DomainChangeInfo
+							{
+								Domain = dom.name,
+								Record = record,
+								Fullname = fullname,
+								RecordType = type,
+								PreviousProxied = currentRecord.proxied,
+								NewProxied = desiredProxy,
+								OriginIp = currentRecord.content,
+								CloudflareIps = relevantIps ?? new List<string>(),
+								Reason = statusLine
+							});
 						}
 						else
 						{
@@ -442,6 +514,24 @@ namespace ManageDns
 					{
 						EnsureDomainHeader();
 						Console.WriteLine($"   ├─── ❌ Error al actualizar Cloudflare para {fullname}: {ex.Message}");
+					}
+				}
+
+				// Enviar notificación consolidada si ocurrieron cambios de proxy en el ciclo y hay canales activos
+				if (cycleChanges.Count > 0 && notificationService.HasEnabledProviders)
+				{
+					var notificationResults = await notificationService.SendBatchNotificationAsync(cycleChanges);
+					foreach (var res in notificationResults)
+					{
+						if (res.Success)
+						{
+							string pluralSuffix = cycleChanges.Count == 1 ? "dominio" : "dominios";
+							Console.WriteLine($"   ├─── 📱 Alerta enviada por {res.ProviderName} ({cycleChanges.Count} {pluralSuffix})");
+						}
+						else
+						{
+							Console.WriteLine($"   ├─── ⚠️ Error al enviar alerta por {res.ProviderName}: {res.ErrorMessage}");
+						}
 					}
 				}
 

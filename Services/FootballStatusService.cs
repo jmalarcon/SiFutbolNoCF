@@ -5,7 +5,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace ManageDns.Services
+namespace SiFutbolNoCF.Services
 {
 	/// <summary>
 	/// Servicio estático encargado de consultar el endpoint oficial de estado de fútbol y procesar las IPs bloqueadas.

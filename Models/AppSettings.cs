@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
-namespace ManageDns.Models
+namespace SiFutbolNoCF.Models
 {
 	/// <summary>
 	/// Representa las opciones de configuración global cargadas para la aplicación SiFutbolNoCF.
@@ -34,6 +36,11 @@ namespace ManageDns.Models
 		/// URL del endpoint oficial de estado que devuelve las IPs bloqueadas por los operadores.
 		/// </summary>
 		public string StatusUrl { get; set; }
+
+		/// <summary>
+		/// Diccionario desacoplado con las secciones de configuración para cada canal de alerta (ej. 'Telegram', 'Discord').
+		/// </summary>
+		public Dictionary<string, JsonElement> Notifications { get; set; } = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
 
 		/// <summary>
 		/// Colección de dominios y subdominios configurados para monitorización y conmutación de proxy.

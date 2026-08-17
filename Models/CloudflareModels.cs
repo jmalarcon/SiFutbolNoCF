@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ManageDns.Models
+namespace SiFutbolNoCF.Models
 {
 	/// <summary>
 	/// Representa la respuesta estándar devuelta por la API de Cloudflare al consultar registros DNS.

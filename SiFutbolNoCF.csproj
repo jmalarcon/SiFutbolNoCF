@@ -6,7 +6,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <StartupObject>ManageDns.Program</StartupObject>
+    <StartupObject>SiFutbolNoCF.Program</StartupObject>
     <AssemblyTitle>SiFutbolNoCF</AssemblyTitle>
     <ApplicationIcon>imgs\SiFutbolNoCF.ico</ApplicationIcon>
   </PropertyGroup>

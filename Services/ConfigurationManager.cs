@@ -2,16 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using ManageDns.Models;
+using SiFutbolNoCF.Models;
 
-namespace ManageDns.Services
+namespace SiFutbolNoCF.Services
 {
 	/// <summary>
 	/// Gestiona la carga y resolución jerárquica de la configuración del sistema.
 	/// </summary>
 	/// <remarks>
 	/// Aplica un orden de precedencia estricto: appsettings.local.json > appsettings.json > Variables de Entorno.
-	/// Está completamente desacoplado de la interfaz de usuario / consola.
+	/// Está completamente desacoplado de la interfaz de usuario / consola y de proveedores de notificación específicos.
 	/// </remarks>
 	public static class ConfigurationManager
 	{
@@ -154,6 +154,25 @@ namespace ManageDns.Services
 			else
 			{
 				finalConfig.Verbosity = "ChangesOnly";
+			}
+
+			// 4. Resolver el diccionario dinámico de notificaciones combinando base y local
+			finalConfig.Notifications = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+
+			if (baseConfig?.Notifications != null)
+			{
+				foreach (var kvp in baseConfig.Notifications)
+				{
+					finalConfig.Notifications[kvp.Key] = kvp.Value;
+				}
+			}
+
+			if (localConfig?.Notifications != null)
+			{
+				foreach (var kvp in localConfig.Notifications)
+				{
+					finalConfig.Notifications[kvp.Key] = kvp.Value;
+				}
 			}
 
 			// Resolver la lista de dominios: dar preferencia a los dominios definidos en el archivo local si existen

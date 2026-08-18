@@ -63,9 +63,9 @@ Para extender el sistema con nuevos canales (ej. Discord, Email, Slack, Webhooks
 4. **Modo Ayuda** (`-?` o `--help`): Muestra la guía de uso en consola.
 
 ### Lógica de Intervalos Adaptativos (`AdaptiveInterval`)
-- **Franja Valle (01:00 a 13:00)**: Pausa larga de 30 minutos (1800 s) ajustada a las 13:00 para ahorrar peticiones cuando no hay partidos.
-- **Franja Activa (13:00 a 01:00)**: Intervalo estándar corto (`IntervalSeconds`, por defecto 300 s) para detectar bloqueos con rapidez.
-- **Bloqueo Activo (partido en curso)**: Pausa inicial de 90 minutos (5400 s) tras detectar el bloqueo (los partidos duran > 105 min). Superados los 90 min, vuelve a comprobación frecuente para reactivar el proxy de Cloudflare en cuanto finalice.
+- **Franja Valle (01:00 a 14:00)**: Pausa directa continua hasta las 14:00 para ahorrar peticiones cuando no hay partidos.
+- **Franja Activa (14:00 a 01:00)**: Intervalo estándar corto (`IntervalSeconds`, por defecto 300 s) para detectar bloqueos con rapidez.
+- **Bloqueo Activo (partido en curso)**: Pausa inicial de 100 minutos (6000 s) tras detectar el bloqueo (los partidos duran > 105 min). Superados los 100 min, vuelve a comprobación frecuente para reactivar el proxy de Cloudflare en cuanto finalice.
 
 ### Precedencia y Búsqueda de Configuración
 La aplicación carga los archivos JSON directamente desde su directorio base de ejecución (`AppDomain.CurrentDomain.BaseDirectory`), resolviendo sus valores evaluando las fuentes en este orden estricto de prioridad:

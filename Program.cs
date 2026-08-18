@@ -566,7 +566,12 @@ namespace SiFutbolNoCF
 				if (showCycleDetails)
 				{
 					int delayMinutes = delaySeconds / 60;
-					if (delayMinutes > 0)
+					int delayHours = delayMinutes / 60;
+					if (delayHours > 0)
+					{
+						LogMessage("⏳", $"Esperando {delayHours}h {delayMinutes % 60}m ({delaySeconds}s) antes de volver a comprobar │ {delayReason}");
+					}
+					else if (delayMinutes > 0)
 					{
 						LogMessage("⏳", $"Esperando {delayMinutes} min ({delaySeconds}s) antes de volver a comprobar │ {delayReason}");
 					}
@@ -588,10 +593,10 @@ namespace SiFutbolNoCF
 		/// </summary>
 		/// <remarks>
 		/// Aplica una optimización dinámica para reducir comprobaciones innecesarias:
-		/// 1. Si no hay bloqueo y es franja valle (01:00 - 13:00): espera 30 minutos (1800 s) ajustados a las 13:00.
-		/// 2. Si no hay bloqueo y es franja activa (13:00 - 01:00): espera el intervalo base configurado (ej. 300 s).
+		/// 1. Si no hay bloqueo y es franja valle (01:00 - 14:00): pausa directa hasta las 14:00 (no hay partidos antes de las 14:00).
+		/// 2. Si no hay bloqueo y es franja activa (14:00 - 01:00): espera el intervalo base configurado (ej. 300 s).
 		/// 3. Si hay bloqueo activo: como los partidos duran más de 105 minutos y la web sigue operativa directamente,
-		///    aplica una pausa inicial de 90 minutos (5400 s) y posteriormente vuelve al intervalo base para reactivar el proxy.
+		///    aplica una pausa inicial de 100 minutos (6000 s) y posteriormente vuelve al intervalo base para reactivar el proxy.
 		/// </remarks>
 		/// <param name="isAdaptive">Indica si el modo adaptativo está activado.</param>
 		/// <param name="baseIntervalSeconds">Intervalo base configurado en segundos.</param>
@@ -614,15 +619,15 @@ namespace SiFutbolNoCF
 				// Calcular los minutos transcurridos desde que se detectó el inicio del bloqueo
 				double minutesSinceBlock = (DateTime.Now - blockStartTime.Value).TotalMinutes;
 
-				// Si lleva menos de 90 minutos bloqueado, aplicar pausa larga (los partidos duran más de 105 minutos)
-				if (minutesSinceBlock < 90)
+				// Si lleva menos de 100 minutos bloqueado, aplicar pausa larga (los partidos duran más de 105 minutos)
+				if (minutesSinceBlock < 100)
 				{
-					reason = "Bloqueo activo (partido en curso, pausa de 90 min)";
-					return 90 * 60; // 5400 segundos
+					reason = "Bloqueo activo (partido en curso, pausa de 100 min)";
+					return 100 * 60; // 6000 segundos
 				}
 
-				// Superados los 90 minutos de bloqueo, volver a intervalo corto para detectar el fin del partido
-				reason = "Bloqueo prolongado (> 90 min, comprobación frecuente)";
+				// Superados los 100 minutos de bloqueo, volver a intervalo corto para detectar el fin del partido
+				reason = "Bloqueo prolongado (> 100 min, comprobación frecuente)";
 				return baseIntervalSeconds;
 			}
 
@@ -630,29 +635,25 @@ namespace SiFutbolNoCF
 			DateTime now = DateTime.Now;
 			int hour = now.Hour;
 
-			// Franja valle: de 01:00 a 13:00 (muy baja probabilidad de partidos de fútbol)
-			if (hour >= 1 && hour < 13)
+			// Franja valle: de 01:00 a 14:00 (no hay partidos de fútbol en directo antes de las 14:00)
+			if (hour >= 1 && hour < 14)
 			{
-				// Intervalo base para franja valle: 30 minutos (1800 segundos)
-				int valleyIntervalSeconds = 1800;
-
-				// Calcular cuándo son las 13:00 de hoy para no retrasar el inicio de la franja activa
-				DateTime targetTime = new DateTime(now.Year, now.Month, now.Day, 13, 0, 0, now.Kind);
+				// Calcular la hora objetivo de las 14:00 de hoy
+				DateTime targetTime = new DateTime(now.Year, now.Month, now.Day, 14, 0, 0, now.Kind);
 				double secondsUntilTarget = (targetTime - now).TotalSeconds;
 
-				// Si el intervalo normal sobrepasa las 13:00, ajustar exactamente hasta las 13:00
-				if (secondsUntilTarget > 0 && secondsUntilTarget < valleyIntervalSeconds)
+				if (secondsUntilTarget > 0)
 				{
-					reason = $"Franja valle (ajuste a inicio de franja activa a las 13:00: {(int)secondsUntilTarget / 60} min)";
-					return Math.Max((int)secondsUntilTarget, baseIntervalSeconds);
+					int waitSeconds = (int)secondsUntilTarget;
+					int waitMinutes = waitSeconds / 60;
+					int waitHours = waitMinutes / 60;
+					reason = $"Franja valle (01:00 - 14:00, pausa directa hasta las 14:00: {waitHours}h {waitMinutes % 60}m)";
+					return Math.Max(waitSeconds, baseIntervalSeconds);
 				}
-
-				reason = "Franja valle (01:00 - 13:00, pausa de 30 min)";
-				return valleyIntervalSeconds;
 			}
 
-			// Franja activa: de 13:00 a 01:00 (horario habitual de emisión de partidos)
-			reason = "Franja activa (13:00 - 01:00, comprobación frecuente)";
+			// Franja activa: de 14:00 a 01:00 (horario habitual de emisión de partidos)
+			reason = "Franja activa (14:00 - 01:00, comprobación frecuente)";
 			return baseIntervalSeconds;
 		}
 

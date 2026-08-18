@@ -22,7 +22,7 @@ PLATFORMS=("win-x64" "win-arm64" "osx-x64" "osx-arm64" "linux-x64" "linux-arm64"
 
 for PLATFORM in "${PLATFORMS[@]}"; do
     echo "[$PLATFORM] Publicando..."
-    if dotnet publish SiFutbolNoCF.csproj -c Release -r "$PLATFORM" --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o "build/$PLATFORM"; then
+    if dotnet publish SiFutbolNoCF.csproj -c Release -r "$PLATFORM" --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o "build/SiFutbolNoCF_$PLATFORM"; then
         echo "[$PLATFORM] OK: Publicado con exito."
     else
         echo "[$PLATFORM] ERROR: Fallo al publicar para esta plataforma."

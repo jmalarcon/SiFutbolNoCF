@@ -343,7 +343,7 @@ El proyecto está configurado para generar binarios independientes que no requie
   chmod +x build.sh
   ./build.sh
   ```
-  Los binarios generados se guardarán organizados en la carpeta `./build/` para cada arquitectura (`win-x64`, `win-arm64`, `osx-x64`, `osx-arm64`, `linux-x64`, `linux-arm64`).
+  Los binarios generados se guardarán organizados en la carpeta `./build/` para cada arquitectura (`SiFutbolNoCF_win-x64`, `SiFutbolNoCF_win-arm64`, `SiFutbolNoCF_osx-x64`, `SiFutbolNoCF_osx-arm64`, `SiFutbolNoCF_linux-x64`, `SiFutbolNoCF_linux-arm64`).
 
 - **Mediante el CLI de .NET** para una plataforma específica:
   ```bash

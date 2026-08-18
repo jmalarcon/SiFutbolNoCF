@@ -33,7 +33,7 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
   - Gestión y resolución de configuración, cliente API de Cloudflare, descarga de estado de bloqueos, resolución DNS y persistencia en caché de disco.
   - **`Services/Notifications/`**: Arquitectura de notificaciones: interfaz `INotificationProvider`, implementaciones de canal (ej. `TelegramNotificationProvider`) y la fachada `NotificationService`.
 - **Scripts y Configuración**:
-  - [`build.bat`](build.bat) y [`build.sh`](build.sh): Scripts para compilación y empaquetado desatendido hacia `./build/<plataforma>`.
+  - [`build.bat`](build.bat) y [`build.sh`](build.sh): Scripts para compilación y empaquetado desatendido hacia `./build/SiFutbolNoCF_<plataforma>`.
   - [`appsettings.json`](appsettings.json) y [`appsettings.local.json`](appsettings.local.json): Plantillas y archivos de configuración.
 
 ### Guía para Agregar Nuevos Proveedores de Notificación

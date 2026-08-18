@@ -22,7 +22,7 @@ set "PLATFORMS=win-x64 win-arm64 osx-x64 osx-arm64 linux-x64 linux-arm64"
 
 for %%P in (%PLATFORMS%) do (
     echo [%%P] Publicando...
-    dotnet publish SiFutbolNoCF.csproj -c Release -r %%P --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o build\%%P
+    dotnet publish SiFutbolNoCF.csproj -c Release -r %%P --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o build\SiFutbolNoCF_%%P
     if !errorlevel! equ 0 (
         echo [%%P] OK: Publicado con exito.
     ) else (

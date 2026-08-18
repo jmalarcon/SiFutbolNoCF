@@ -148,9 +148,9 @@ La aplicación busca y fusiona la configuración de varias fuentes con el siguie
 ### Funcionamiento del Modo Adaptativo (`AdaptiveInterval`):
 Cuando `AdaptiveInterval` está activo (valor por defecto `true`), la aplicación optimiza dinámicamente las pausas entre comprobaciones:
 
-1. **Franja Valle (01:00 a 13:00 hora local)**: Debido a la ausencia de partidos en directo durante madrugadas y mañanas, la espera se eleva a **30 minutos** (1800 s), ajustándose automáticamente al llegar a las 13:00 para no retrasar la detección vespertina.
-2. **Franja Activa (13:00 a 01:00 hora local)**: Periodo con emisión habitual de partidos. Comprueba el estado con la frecuencia estándar configurada en `IntervalSeconds` (por defecto **5 minutos** / 300 s).
-3. **Bloqueo Activo (partido en curso)**: Al detectarse un bloqueo y desactivar el _proxy_, el servidor expone su IP de origen y la web continúa funcionando con normalidad. Como un partido dura un mínimo de 105 minutos (90 min + descanso), la aplicación aplica una pausa inicial de **90 minutos** sin peticiones innecesarias. Transcurridos esos 90 minutos, vuelve a comprobar con frecuencia corta para restaurar el _proxy_ de Cloudflare en cuanto finalice el partido.
+1. **Franja Valle (01:00 a 14:00 hora local)**: Debido a la total ausencia de partidos en directo durante madrugadas y mañanas (nunca se  han jugado partidos antes de las 14:00 en los últimos años), la aplicación realiza una pausa continua directa hasta las 14:00 sin realizar comprobaciones intermedias.
+2. **Franja Activa (14:00 a 01:00 hora local)**: Periodo con emisión habitual de partidos. Comprueba el estado con la frecuencia estándar configurada en `IntervalSeconds` (por defecto **5 minutos** / 300 s).
+3. **Bloqueo Activo (partido en curso)**: Al detectarse un bloqueo y desactivar el _proxy_, el servidor expone su IP de origen y la web continúa funcionando con normalidad. Como un partido dura más de 105 minutos (90 min + descanso), la aplicación aplica una pausa inicial de **100 minutos** sin peticiones innecesarias. Transcurridos esos 100 minutos, vuelve a comprobar con frecuencia corta para restaurar el _proxy_ de Cloudflare en cuanto finalice el partido.
 
 Si se desactiva (`AdaptiveInterval: false`), la aplicación utilizará siempre el valor fijo de `IntervalSeconds`.
 

@@ -11,9 +11,9 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
 ### Mecanismo de Funcionamiento
 1. Consulta periódicamente el *endpoint* oficial de estado (`https://hayahora.futbol/estado/data.json`) para obtener el conjunto de direcciones IP bloqueadas activamente por los operadores en España (evaluando el último cambio de estado registrado en `stateChanges`).
 2. **Resolución DNS y Detección**: Resuelve las IPs públicas del dominio monitoreado (registros A, AAAA o CNAMEs) mediante `System.Net.Dns.GetHostAddressesAsync`.
-3. **Persistencia de IPs de Cloudflare**: Almacena las IPs conocidas de Cloudflare en `.sifutbolnocf.cache.json` para conservarlas incluso cuando el proxy esté desactivado o tras reinicios del proceso.
+3. **Persistencia temporal de IPs de Cloudflare**: Almacena las IPs conocidas de Cloudflare en `.sifutbolnocf.cache.json` exclusivamente al detectar un bloqueo para conservarlas mientras el proxy esté desactivado o ante reinicios del proceso.
 4. **Si hay bloqueo**: Si alguna de las IPs de Cloudflare del dominio está bloqueada, desactiva de inmediato el *proxy* de Cloudflare (cambia la "nube naranja" a "nube gris"), exponiendo temporalmente la IP original del servidor.
-5. **Cuando termina el bloqueo**: Si las IPs de Cloudflare ya no aparecen bloqueadas en el *endpoint*, reactiva el *proxy* de Cloudflare (vuelve la "nube naranja") para restaurar la protección CDN y certificados.
+5. **Cuando termina el bloqueo**: Si las IPs de Cloudflare ya no aparecen bloqueadas en el *endpoint*, reactiva el *proxy* de Cloudflare (vuelve la "nube naranja"), elimina la entrada de la caché en disco y vuelve a resolver por DNS las IPs en tiempo real.
 6. **Notificaciones**: Si las alertas están habilitadas (ej. Telegram), envía notificaciones consolidadas por ciclo detallando todos los dominios modificados.
 
 ---

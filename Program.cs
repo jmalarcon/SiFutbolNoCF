@@ -62,7 +62,7 @@ namespace SiFutbolNoCF
 			var version = assembly.GetName().Version?.ToString() ?? "1.0.0.0";
 
 			// Imprimir cabecera de ayuda
-			Console.WriteLine($"===== Ayuda: CF Football Bypass INTELIGENTE v{version} =====");
+			Console.WriteLine($"===== Ayuda: SiFutbolNoCF v{version} =====");
 			Console.WriteLine();
 			Console.WriteLine("Funcionalidad:");
 			Console.WriteLine("  Este programa ayuda a mitigar los bloqueos de ISP (por culpa de La Liga cuando hay fútbol)");
@@ -135,6 +135,12 @@ namespace SiFutbolNoCF
 				// 4. Mostrar el resultado por consola
 				if (updated)
 				{
+					// Si se activó el proxy manualmente, eliminar las IPs cacheadas para este dominio
+					if (activateCfProxy)
+					{
+						IpCacheService.RemoveIps(fullname);
+					}
+
 					Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP origen: {currentRecord.content})");
 
 					// Intentar enviar alerta si el usuario tiene notificaciones configuradas en su entorno
@@ -205,7 +211,7 @@ namespace SiFutbolNoCF
 			var assembly = typeof(Program).Assembly;
 			var version = assembly.GetName().Version?.ToString() ?? "1.0.0.0";
 
-			Console.WriteLine($"===== CF Football Bypass INTELIGENTE v{version} =====");
+			Console.WriteLine($"===== SiFutbolNoCF v{version} =====");
 			Console.WriteLine("===============================================================");
 
 			// 1. Cargar la configuración resuelta desde JSON o variables de entorno
@@ -389,21 +395,20 @@ namespace SiFutbolNoCF
 						relevantIps = resolvedIps;
 						if (resolvedIps.Count > 0)
 						{
-							// Guardar las IPs de Cloudflare detectadas en la caché persistente para recordarlas si se desactiva el proxy
-							IpCacheService.SetIps(fullname, resolvedIps);
-
 							// Comprobar si alguna de las IPs de Cloudflare resueltas está en la lista de bloqueadas
 							bool isBlocked = resolvedIps.Any(ip => blockedIps.Contains(ip));
 							if (isBlocked)
 							{
-								// Hay bloqueo activo: se debe desactivar el proxy para exponer la IP de origen
+								// Hay bloqueo activo: guardar IPs en caché antes de desactivar el proxy para exponer la IP de origen
+								IpCacheService.SetIps(fullname, resolvedIps);
 								desiredProxy = false;
 								anyDomainBlocked = true;
 								statusLine = $"🔴 Estado: BLOQUEADO (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.";
 							}
 							else
 							{
-								// No hay bloqueo: mantener el proxy activado
+								// No hay bloqueo: asegurar que la caché esté limpia y mantener el proxy activado
+								IpCacheService.RemoveIps(fullname);
 								desiredProxy = true;
 								statusLine = $"✅ Estado: no bloqueado (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: ACTIVAR.";
 							}
@@ -476,6 +481,12 @@ namespace SiFutbolNoCF
 
 						if (updated)
 						{
+							// Si se reactivó el proxy con éxito, eliminar las IPs de la caché
+							if (desiredProxy)
+							{
+								IpCacheService.RemoveIps(fullname);
+							}
+
 							// Incrementar el contador de cambios realizados en este ciclo
 							cycleChangesCount++;
 

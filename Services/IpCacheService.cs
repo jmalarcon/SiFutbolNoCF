@@ -71,12 +71,22 @@ namespace SiFutbolNoCF.Services
 		}
 
 		/// <summary>
-		/// Guarda el estado actual de la caché de memoria en el archivo de disco.
+		/// Guarda el estado actual de la caché de memoria en el archivo de disco o lo elimina si está vacía.
 		/// </summary>
 		public static void Save()
 		{
 			try
 			{
+				// Si no hay entradas en memoria, eliminar el archivo en disco si existe
+				if (_cache == null || _cache.Count == 0)
+				{
+					if (File.Exists(_cacheFilePath))
+					{
+						File.Delete(_cacheFilePath);
+					}
+					return;
+				}
+
 				// Convertir la colección en memoria a formato JSON
 				string json = JsonSerializer.Serialize(_cache, _jsonOptions);
 
@@ -85,7 +95,7 @@ namespace SiFutbolNoCF.Services
 			}
 			catch
 			{
-				// Ignorar fallos de escritura para no interrumpir el flujo principal si el disco está protegido
+				// Ignorar fallos de escritura o borrado para no interrumpir el flujo principal
 			}
 		}
 
@@ -130,6 +140,25 @@ namespace SiFutbolNoCF.Services
 
 			// Persistir inmediatamente en el archivo de disco para tolerar reinicios imprevistos
 			Save();
+		}
+
+		/// <summary>
+		/// Elimina las IPs de Cloudflare asociadas a un dominio y actualiza o elimina el archivo en disco.
+		/// </summary>
+		/// <param name="domain">Nombre completo del dominio o subdominio.</param>
+		public static void RemoveIps(string domain)
+		{
+			// Validar que el dominio no sea nulo ni vacío
+			if (string.IsNullOrWhiteSpace(domain))
+			{
+				return;
+			}
+
+			// Si el dominio existe en la colección, eliminarlo y persistir cambios
+			if (_cache.Remove(domain))
+			{
+				Save();
+			}
 		}
 	}
 }

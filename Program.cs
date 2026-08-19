@@ -562,23 +562,14 @@ namespace SiFutbolNoCF
 				// Calcular el tiempo de espera hasta la siguiente comprobación
 				int delaySeconds = CalculateNextDelaySeconds(isAdaptive, intervalSeconds, anyDomainBlocked, blockStartTime, out string delayReason);
 
-				// Mostrar el mensaje con el intervalo y motivo si corresponde la verbosidad
-				if (showCycleDetails)
+				// Mostrar el mensaje con el intervalo y motivo en modo detallado o si la espera supera el intervalo predeterminado
+				if (showCycleDetails || delaySeconds > intervalSeconds)
 				{
-					int delayMinutes = delaySeconds / 60;
-					int delayHours = delayMinutes / 60;
-					if (delayHours > 0)
-					{
-						LogMessage("⏳", $"Esperando {delayHours}h {delayMinutes % 60}m ({delaySeconds}s) antes de volver a comprobar │ {delayReason}");
-					}
-					else if (delayMinutes > 0)
-					{
-						LogMessage("⏳", $"Esperando {delayMinutes} min ({delaySeconds}s) antes de volver a comprobar │ {delayReason}");
-					}
-					else
-					{
-						LogMessage("⏳", $"Esperando {delaySeconds} segundos antes de volver a comprobar │ {delayReason}");
-					}
+					// Formatear el tiempo de espera en formato estándar hh:mm:ss
+					TimeSpan waitSpan = TimeSpan.FromSeconds(delaySeconds);
+					string formattedTime = $"{(int)waitSpan.TotalHours:D2}:{waitSpan.Minutes:D2}:{waitSpan.Seconds:D2}";
+
+					LogMessage("⏳", $"Esperando {formattedTime} ({delaySeconds}s) antes de volver a comprobar │ {delayReason}");
 				}
 
 				// Marcar que el primer ciclo ha concluido

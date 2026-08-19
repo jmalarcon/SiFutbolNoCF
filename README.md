@@ -108,8 +108,9 @@ Si estás ejecutando la aplicación en modo demonio permanente (por ejemplo, en 
 ```bash
 ./SiFutbolNoCF >> /var/log/sifutbolnocf.log 2> /dev/tty &
 ```
+
 > [!NOTE]
-> El operador `>>` añade los logs al final del archivo, `2> /dev/tty` envía errores a la terminal, y el `&` final envía el proceso a segundo plano.
+> El operador `>>` añade los logs al final del archivo, `2> /dev/tty` envía errores a la terminal, y el `&` final envía el proceso a segundo plano. Te devuelve el PID del proceso para poder matarlo más tarde con `kill <PID>` si lo deseas, aunque cerrando del todo la terminal también se elimina.
 
 > [!IMPORTANT]
 > Para poder ejecutarlo **en Mac** tendrás que otorgarle **permisos de ejecución** con `chmod +x SiFutbolNoCF`. Además, **la primera vez** que lo ejecutes, al ser un programa descargado de internet, tendrás que **autorizar su ejecución** desde los ajustes de seguridad del sistema:
@@ -149,7 +150,7 @@ La aplicación busca y fusiona la configuración de varias fuentes con el siguie
 ### Funcionamiento del Modo Adaptativo (`AdaptiveInterval`):
 Cuando `AdaptiveInterval` está activo (valor por defecto `true`), la aplicación optimiza dinámicamente las pausas entre comprobaciones:
 
-1. **Franja Valle (01:00 a 14:00 hora local)**: Debido a la total ausencia de partidos en directo durante madrugadas y mañanas (nunca se  han jugado partidos antes de las 14:00 en los últimos años), la aplicación realiza una pausa continua directa hasta las 14:00 sin realizar comprobaciones intermedias.
+1. **Franja Valle (01:00 a 14:00 hora local)**: Debido a la total ausencia de partidos en directo durante madrugadas y mañanas (nunca se han jugado partidos antes de las 14:00 en los últimos años), la aplicación realiza una pausa continua directa hasta las 14:00 sin realizar comprobaciones intermedias.
 2. **Franja Activa (14:00 a 01:00 hora local)**: Periodo con emisión habitual de partidos. Comprueba el estado con la frecuencia estándar configurada en `IntervalSeconds` (por defecto **5 minutos** / 300 s).
 3. **Bloqueo Activo (partido en curso)**: Al detectarse un bloqueo y desactivar el _proxy_, el servidor expone su IP de origen y la web continúa funcionando con normalidad. Como un partido dura más de 105 minutos (90 min + descanso), la aplicación aplica una pausa inicial de **100 minutos** sin peticiones innecesarias. Transcurridos esos 100 minutos, vuelve a comprobar con frecuencia corta para restaurar el _proxy_ de Cloudflare en cuanto finalice el partido.
 
@@ -310,6 +311,40 @@ Si el _endpoint_ del estado de bloqueo no responde o devuelve un JSON no válido
    ```
 2. Revisa tu panel de DNS en Cloudflare para constatar si la nube del registro correspondiente ha cambiado a color gris.
 
+## Apoya el proyecto / Donaciones
+
+¡Toda ayuda es bienvenida! Si esta aplicación te soluciona un problema gordo (tu web no disponible y no puedes facturar o atender a tus clientes), puedes apoyarme con una donación para mantener este y otros proyectos de código abierto:
+
+- [**Mecenazgo en GitHub (Sponsor)**](https://github.com/sponsors/jmalarcon)
+- [**Donar en PayPal**](https://www.paypal.me/jmalarcon)
+
+También puedes apoyar dándole una ⭐ estrella al repositorio y compartiéndolo con otras personas a quienes les pueda resultar útil.
+
+## Arquitectura y Detalles Técnicos
+
+El proyecto sigue una arquitectura modular y desacoplada construida sobre .NET 10 bajo la filosofía **Zero-Dependencies** (empleando exclusivamente la BCL de .NET):
+
+```mermaid
+graph TD
+    Program[Program.cs - CLI / Presentación] --> ProxySyncService[ProxySyncService]
+    Program --> ConfigurationManager[ConfigurationManager]
+    ProxySyncService --> FootballStatusService[FootballStatusService]
+    ProxySyncService --> CloudflareService[CloudflareService]
+    ProxySyncService --> DnsResolverService[DnsResolverService]
+    ProxySyncService --> IpCacheService[IpCacheService]
+    ProxySyncService --> NotificationService[NotificationService]
+```
+
+### Componentes Principales
+
+- **`Program.cs`**: Punto de entrada, procesamiento de argumentos de línea de comandos y renderizado jerárquico de la interfaz en consola.
+- **`ProxySyncService`**: Servicio estático especializado que orquesta la evaluación de bloqueos, conmutación inteligente del proxy en Cloudflare, persistencia de IPs en caché y cálculo de intervalos adaptativos.
+- **`FootballStatusService`**: Cliente HTTP de alto rendimiento que descarga y parsea el archivo `data.json` del endpoint oficial mediante `JsonDocument` para extraer las IPs bloqueadas en tiempo real.
+- **`CloudflareService`**: Comunicación con la API REST v4 de Cloudflare para consultar y modificar el estado de los registros DNS y resolver IDs de zonas.
+- **`DnsResolverService`**: Resolución DNS nativa multiplataforma mediante `System.Net.Dns.GetHostAddressesAsync` para obtener las IPs públicas asignadas al dominio.
+- **`IpCacheService`**: Gestión de la caché temporal en disco (`.sifutbolnocf.cache.json`) que almacena las IPs conocidas de Cloudflare durante el bloqueo para tolerar reinicios del proceso.
+- **`NotificationService`**: Fachada extensible de notificaciones que coordina los canales configurados (Telegram) para enviar alertas consolidadas por ciclo.
+
 ## Cómo compilar desde el código fuente
 
 Si prefieres compilar la aplicación por tu cuenta o realizar modificaciones en el código fuente:
@@ -349,13 +384,13 @@ El proyecto está configurado para generar binarios independientes que no requie
 - **Mediante el CLI de .NET** para una plataforma específica:
   ```bash
   # Para Windows (x64)
-  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./dist/win-x64
+  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./dist/SiFutbolNoCF_win-x64
   
   # Para Linux (x64)
-  dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o ./dist/linux-x64
+  dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o ./dist/SiFutbolNoCF_linux-x64
   
   # Para macOS con procesadores Apple Silicon (ARM64)
-  dotnet publish -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -o ./dist/osx-arm64
+  dotnet publish -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -o ./dist/SiFutbolNoCF_osx-arm64
   ```
 
 ## Cómo contribuir
@@ -364,17 +399,12 @@ El proyecto está configurado para generar binarios independientes que no requie
 
 - **Reporta Bugs o sugiere ideas**: abre una [Issue](https://github.com/jmalarcon/SiFutbolNoCF/issues) describiendo la situación.
 - **Envía mejoras de código**: haz un _Fork_ del proyecto, realiza tus cambios en una rama específica y abre un _Pull Request_.
-- **Apoya el proyecto**: dale una ⭐ estrella al repositorio y compártelo con otras personas que puedan necesitar esta solución.
-- **Dona para apoyar mi tiempo**: ya sé que esto casi nadie lo hace pero, si esta aplicación te soluciona un problema gordo (tu web no disponible y no puedes facturar o atender a tus clientes), puedes donarme algo para apoyar el desarrollo 😉 En el lateral de este repositorio encontrarás los botones para donar directamente a través de GitHub o mediante PayPal, donde pone "Sponsor this project". ¡Gracias!
 
-  - [**Mecenazgo en GitHub**](https://github.com/sponsors/jmalarcon)
-  - [**Donar en PayPal**](https://www.paypal.me/jmalarcon)
+## Posibles mejoras futuras
+
+- Añadir soporte para especificar clave de API y zona directamente en `appsettings.json` **para cada dominio individual**, permitiendo gestionar dominios de diferentes cuentas de Cloudflare. Ahora solo se permite la gestión de dominios bajo la misma cuenta de Cloudflare (misma clave de API).
+- Nuevas vías de notificación: soporte para canales adicionales como correo electrónico (vía servidor SMTP), Discord, Slack o Webhooks HTTP genéricos si existe interés por parte de la comunidad.
 
 ## Licencia
 
 Este proyecto está bajo la Licencia **Apache 2.0**. Consulta el archivo `LICENSE` adjunto para obtener más información.
-
-## Posibles mejoras futuras
-
-- Añadir soporte para especificar clave de API y zona directamente en `appsettings.json` para cada dominio individual, permitiendo gestionar dominios de diferentes cuentas de Cloudflare. Ahora solo se permite la gestión de dominios bajo la misma cuenta de Cloudflare (misma clave de API).
-- Nuevas vías de notificación: soporte para canales adicionales como correo electrónico (vía servidor SMTP), Discord, Slack o Webhooks HTTP genéricos si existe interés por parte de la comunidad.

@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using SiFutbolNoCF.Models;
-using SiFutbolNoCF.Models.Notifications;
 using SiFutbolNoCF.Services;
 using SiFutbolNoCF.Services.Notifications;
 
@@ -14,8 +12,8 @@ namespace SiFutbolNoCF
 	/// Clase principal y punto de entrada de la aplicación SiFutbolNoCF.
 	/// </summary>
 	/// <remarks>
-	/// Orquesta los servicios estáticos especializados para la conmutación inteligente de proxies en Cloudflare.
-	/// Es el único componente responsable de gobernar la presentación visual, mensajes y emojis por consola.
+	/// Responsable de procesar los argumentos de línea de comandos, controlar el ciclo de ejecución
+	/// y gobernar la presentación visual, mensajes y emojis en la consola.
 	/// </remarks>
 	class Program
 	{
@@ -35,17 +33,17 @@ namespace SiFutbolNoCF
 				return;
 			}
 
-			// Comprobar si se solicita ejecutar un único ciclo con -1 o --once (ideal para cron jobs o tareas programadas)
+			// Comprobar si se solicita ejecutar un único ciclo con -1 o --once
 			if (args.Length == 1 && (args[0] == "-1" || args[0] == "--once"))
 			{
 				await RunDaemon(runOnce: true);
 			}
-			// Comprobar si se proporcionan exactamente 6 argumentos para el modo directo de ejecución única (one-off)
+			// Comprobar si se proporcionan exactamente 6 argumentos para el modo directo (one-off)
 			else if (args.Length == 6)
 			{
 				await RunOneOff(args);
 			}
-			// Por defecto, iniciar en modo demonio continuo con bucle infinito y comprobaciones periódicas
+			// Por defecto, iniciar en modo demonio continuo con bucle periódico
 			else
 			{
 				await RunDaemon(runOnce: false);
@@ -61,7 +59,6 @@ namespace SiFutbolNoCF
 			var assembly = typeof(Program).Assembly;
 			var version = assembly.GetName().Version?.ToString() ?? "1.0.0.0";
 
-			// Imprimir cabecera de ayuda
 			Console.WriteLine($"===== Ayuda: SiFutbolNoCF v{version} =====");
 			Console.WriteLine();
 			Console.WriteLine("Funcionalidad:");
@@ -104,7 +101,6 @@ namespace SiFutbolNoCF
 		/// <param name="args">Argumentos: [0]dominio, [1]registro, [2]tipo, [3]activateCfProxy, [4]apiToken, [5]zoneId.</param>
 		static async Task RunOneOff(string[] args)
 		{
-			// Mapear los argumentos posicionales recibidos por línea de comandos
 			string domain = args[0];
 			string record = args[1];
 			string type = args[2];
@@ -112,92 +108,55 @@ namespace SiFutbolNoCF
 			string apiToken = args[4];
 			string zoneId = args[5];
 
-			// Construir el nombre calificado del host a conmutar
 			string fullname = (string.IsNullOrEmpty(record) || record == "@") ? domain : $"{record}.{domain}";
 			Console.WriteLine($"   ├─ 👀 {fullname} (tipo: {type})");
 
+			// Inicializar el servicio de notificaciones opcional si existe configuración en el entorno
+			NotificationService notificationService = null;
 			try
 			{
-				// 1. Consultar el estado actual del registro en Cloudflare
-				var currentRecord = await CloudflareService.FetchDnsRecordAsync(domain, record, type, apiToken, zoneId);
-				if (currentRecord == null)
-				{
-					throw new Exception("Registro no encontrado en Cloudflare.");
-				}
-
-				// 2. Determinar emojis e indicadores de texto para el estado del proxy
-				string proxyEmoji = activateCfProxy ? "🔒 ON" : "🔓 OFF";
-				string currentProxyEmoji = currentRecord.proxied ? "🔒 ON" : "🔓 OFF";
-
-				// 3. Aplicar la actualización en Cloudflare mediante el servicio
-				bool updated = await CloudflareService.ApplyDnsRecordUpdateAsync(domain, record, type, currentRecord, activateCfProxy, apiToken, zoneId);
-
-				// 4. Mostrar el resultado por consola
-				if (updated)
-				{
-					// Si se activó el proxy manualmente, eliminar las IPs cacheadas para este dominio
-					if (activateCfProxy)
-					{
-						IpCacheService.RemoveIps(fullname);
-					}
-
-					Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP origen: {currentRecord.content})");
-
-					// Intentar enviar alerta si el usuario tiene notificaciones configuradas en su entorno
-					try
-					{
-						var config = ConfigurationManager.LoadConfiguration();
-						var notificationService = new NotificationService(config?.Notifications);
-						if (notificationService.HasEnabledProviders)
-						{
-							var oneOffChange = new List<DomainChangeInfo>
-							{
-								new DomainChangeInfo
-								{
-									Domain = domain,
-									Record = record,
-									Fullname = fullname,
-									RecordType = type,
-									PreviousProxied = currentRecord.proxied,
-									NewProxied = activateCfProxy,
-									OriginIp = currentRecord.content,
-									CloudflareIps = new List<string>(),
-									Reason = "Ejecución manual One-off"
-								}
-							};
-
-							var notifResults = await notificationService.SendBatchNotificationAsync(oneOffChange);
-							foreach (var res in notifResults)
-							{
-								if (res.Success)
-								{
-									Console.WriteLine($"   ├─── 📱 Alerta enviada por {res.ProviderName}");
-								}
-								else
-								{
-									Console.WriteLine($"   ├─── ⚠️ Error al enviar alerta por {res.ProviderName}: {res.ErrorMessage}");
-								}
-							}
-						}
-					}
-					catch
-					{
-						// Ignorar fallos de resolución de alertas en modo manual one-off
-					}
-				}
-				else
-				{
-					Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP origen: {currentRecord.content})");
-				}
+				var config = ConfigurationManager.LoadConfiguration();
+				notificationService = new NotificationService(config?.Notifications);
 			}
-			catch (Exception ex)
+			catch
 			{
-				// Mostrar el error en formato de sub-rama y finalizar con código de error
-				Console.WriteLine($"   ├─── ❌ Error: {ex.Message}");
+				// Ignorar fallos de configuración de alertas en ejecución manual
+			}
+
+			// Delegar la ejecución manual en ProxySyncService
+			var result = await ProxySyncService.ExecuteOneOffAsync(domain, record, type, activateCfProxy, apiToken, zoneId, notificationService);
+
+			if (!result.Success)
+			{
+				Console.WriteLine($"   ├─── ❌ Error: {result.ErrorMessage}");
 				Environment.Exit(1);
 			}
 
-			// Finalizar satisfactoriamente
+			string proxyEmoji = activateCfProxy ? "🔒 ON" : "🔓 OFF";
+			string prevProxyEmoji = result.PreviousProxied ? "🔒 ON" : "🔓 OFF";
+
+			if (result.Updated)
+			{
+				Console.WriteLine($"   ├─── ✅ Actualizado │ {prevProxyEmoji} → {proxyEmoji} (IP origen: {result.OriginIp})");
+
+				// Mostrar estado de las alertas enviadas
+				foreach (var notif in result.NotificationResults)
+				{
+					if (notif.Success)
+					{
+						Console.WriteLine($"   ├─── 📱 Alerta enviada por {notif.ProviderName}");
+					}
+					else
+					{
+						Console.WriteLine($"   ├─── ⚠️ Error al enviar alerta por {notif.ProviderName}: {notif.ErrorMessage}");
+					}
+				}
+			}
+			else
+			{
+				Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP origen: {result.OriginIp})");
+			}
+
 			Environment.Exit(0);
 		}
 
@@ -207,14 +166,13 @@ namespace SiFutbolNoCF
 		/// <param name="runOnce">Indica si debe ejecutarse un único ciclo (true) o entrar en bucle continuo (false).</param>
 		static async Task RunDaemon(bool runOnce = false)
 		{
-			// Obtener la versión de la aplicación para la cabecera
 			var assembly = typeof(Program).Assembly;
 			var version = assembly.GetName().Version?.ToString() ?? "1.0.0.0";
 
 			Console.WriteLine($"===== SiFutbolNoCF v{version} =====");
 			Console.WriteLine("===============================================================");
 
-			// 1. Cargar la configuración resuelta desde JSON o variables de entorno
+			// 1. Cargar y validar la configuración
 			AppSettings config = null;
 			try
 			{
@@ -226,82 +184,52 @@ namespace SiFutbolNoCF
 				Environment.Exit(1);
 			}
 
-			// Validar que la configuración no sea nula
 			if (config == null)
 			{
 				LogMessage("❌", "ERROR", "No se pudo cargar la configuración.");
 				Environment.Exit(1);
 			}
 
-			// Extraer los parámetros de configuración necesarios
-			string cfApiToken = config.CfApiToken;
-			string statusUrl = config.StatusUrl;
-			int intervalSeconds = config.IntervalSeconds;
-			bool isAdaptive = config.AdaptiveInterval ?? true;
-			var domains = config.Domains;
-
-			// Validar la presencia obligatoria del token de API de Cloudflare
-			if (string.IsNullOrEmpty(cfApiToken))
+			if (string.IsNullOrEmpty(config.CfApiToken))
 			{
 				LogMessage("❌", "ERROR", "CfApiToken debe estar configurado.");
 				Environment.Exit(1);
 			}
 
-			// Validar que exista al menos un dominio configurado para monitorizar
-			if (domains == null || domains.Count == 0)
+			if (config.Domains == null || config.Domains.Count == 0)
 			{
 				LogMessage("❌", "ERROR", "No se encontraron dominios válidos configurados.");
 				Environment.Exit(1);
 			}
 
-			// 2. Auto-detectar los Zone IDs de Cloudflare si el usuario los dejó vacíos
-			foreach (var dom in domains)
+			// 2. Auto-detectar los Zone IDs de Cloudflare si no están especificados
+			var zoneDetections = await ProxySyncService.ResolveZoneIdsAsync(config.Domains, config.CfApiToken);
+			foreach (var detection in zoneDetections)
 			{
-				if (string.IsNullOrEmpty(dom.CfZoneId))
+				LogMessage("🔍", "CONFIG", $"Auto-detectando ID de zona para {detection.DomainName}...");
+				if (detection.Success)
 				{
-					string record = string.IsNullOrEmpty(dom.record) ? "@" : dom.record;
-					string fullname = (record == "@") ? dom.name : $"{record}.{dom.name}";
-
-					LogMessage("🔍", "CONFIG", $"Auto-detectando ID de zona para {dom.name}...");
-					try
-					{
-						// Consultar la API de Cloudflare para resolver el ID de la zona
-						string resolvedZoneId = await CloudflareService.FetchZoneIdAsync(dom.name, cfApiToken);
-						dom.CfZoneId = resolvedZoneId;
-						LogMessage("✅", "CONFIG", $"ID de zona detectado para {dom.name}: {resolvedZoneId}");
-					}
-					catch (Exception ex)
-					{
-						// Si falla la auto-detección, notificar y finalizar con error
-						LogMessage("❌", "ERROR", $"El dominio {fullname} no tiene un ID de zona (CfZoneId) y falló la auto-detección: {ex.Message}");
-						Environment.Exit(1);
-					}
+					LogMessage("✅", "CONFIG", $"ID de zona detectado para {detection.DomainName}: {detection.ZoneId}");
+				}
+				else
+				{
+					LogMessage("❌", "ERROR", $"El dominio {detection.Fullname} no tiene un ID de zona (CfZoneId) y falló la auto-detección: {detection.ErrorMessage}");
+					Environment.Exit(1);
 				}
 			}
 
-			// Inicializar el servicio de notificaciones con la configuración resuelta
+			// 3. Inicializar el servicio de notificaciones
 			var notificationService = new NotificationService(config.Notifications);
 
-			// Determinar si la verbosidad configurada es completa (Full) o filtrada por cambios (ChangesOnly)
+			bool isAdaptive = config.AdaptiveInterval ?? true;
 			bool isFullVerbosity = string.Equals(config.Verbosity, "Full", StringComparison.OrdinalIgnoreCase);
-
-			// Bandera para identificar el primer ciclo de comprobación
 			bool isFirstRun = true;
-
-			// Registrar el instante en que se detectó el inicio del bloqueo activo
 			DateTime? blockStartTime = null;
 
-			// 3. Iniciar el bucle de comprobación y sincronización
+			// 4. Iniciar el bucle de comprobación
 			while (true)
 			{
-				// Indicar si se deben mostrar todos los detalles del ciclo (primer ciclo o modo Full)
 				bool showCycleDetails = isFirstRun || isFullVerbosity;
-
-				// Contador de cambios aplicados en este ciclo
-				int cycleChangesCount = 0;
-
-				// Lista para consolidar los cambios de estado ocurridos en este ciclo para la notificación agrupada
-				var cycleChanges = new List<DomainChangeInfo>();
 
 				if (showCycleDetails)
 				{
@@ -313,350 +241,123 @@ namespace SiFutbolNoCF
 					LogTimestamp("Comprobando estado de IPs bloqueadas...");
 				}
 
-				// Descargar el archivo data.json una única vez por iteración para optimizar ancho de banda
-				HashSet<string> blockedIps;
-				try
+				// Ejecutar el ciclo completo de sincronización mediante ProxySyncService
+				var cycleResult = await ProxySyncService.ExecuteCycleAsync(config, notificationService);
+
+				// Mostrar errores o estado de descarga de IPs
+				if (!string.IsNullOrEmpty(cycleResult.BlockedIpsError))
 				{
-					blockedIps = await FootballStatusService.FetchBlockedIpsAsync(statusUrl);
-					if (showCycleDetails)
-					{
-						LogMessage("ℹ️", "ESTADO", $"Total de IPs bloqueadas activamente: {blockedIps.Count}");
-					}
+					LogMessage("⚠️", "ESTADO", $"Error al consultar IPs bloqueadas: {cycleResult.BlockedIpsError}");
 				}
-				catch (Exception ex)
+				else if (showCycleDetails)
 				{
-					LogMessage("⚠️", "ESTADO", $"Error al consultar IPs bloqueadas: {ex.Message}");
-					blockedIps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+					LogMessage("ℹ️", "ESTADO", $"Total de IPs bloqueadas activamente: {cycleResult.BlockedIps.Count}");
 				}
 
-				// Bandera para determinar si existe al menos un dominio con bloqueo activo en este ciclo
-				bool anyDomainBlocked = false;
-
-				// Iterar sobre cada uno de los dominios configurados
-				foreach (var dom in domains)
+				// Renderizar resultados individuales de cada dominio
+				foreach (var domResult in cycleResult.DomainResults)
 				{
-					// Normalizar nombre de registro y tipo de registro
-					string record = string.IsNullOrEmpty(dom.record) ? "@" : dom.record;
-					string type = string.IsNullOrEmpty(dom.type) ? "A" : dom.type;
-					string fullname = (record == "@") ? dom.name : $"{record}.{dom.name}";
-
-					// Controlar si ya se imprimió la cabecera del dominio en este ciclo
-					bool headerPrinted = false;
-
-					// Función local para imprimir la cabecera del dominio si aún no se ha mostrado
-					void EnsureDomainHeader()
-					{
-						if (!headerPrinted)
-						{
-							Console.WriteLine();
-							Console.WriteLine($"   ├─ 👀 {fullname} (tipo: {type})");
-							headerPrinted = true;
-						}
-					}
-
-					// Si corresponde mostrar detalles completos, imprimir cabecera directamente
-					if (showCycleDetails)
-					{
-						EnsureDomainHeader();
-					}
-
-					// Consultar el registro actual en Cloudflare para conocer su estado
-					DnsRecord currentRecord = null;
-					try
-					{
-						currentRecord = await CloudflareService.FetchDnsRecordAsync(dom.name, record, type, cfApiToken, dom.CfZoneId);
-					}
-					catch (Exception ex)
-					{
-						EnsureDomainHeader();
-						Console.WriteLine($"   ├─── ❌ Error al consultar Cloudflare para {fullname}: {ex.Message}");
-						continue;
-					}
-
-					// Si el registro no existe en la zona, notificar y saltar al siguiente dominio
-					if (currentRecord == null)
-					{
-						EnsureDomainHeader();
-						Console.WriteLine($"   ├─── ⚠️ Registro {fullname} no encontrado en Cloudflare, se omitirá.");
-						continue;
-					}
-
-					// Obtener el estado actual del proxy (nube naranja o gris)
-					bool currentProxied = currentRecord.proxied;
-					bool desiredProxy = true;
-					string statusLine = string.Empty;
-					List<string> relevantIps = new List<string>();
-
-					if (currentProxied)
-					{
-						// ESCENARIO 1: El proxy está activo en Cloudflare.
-						// El DNS público resuelve a las direcciones IP de Cloudflare.
-						var resolvedIps = await DnsResolverService.ResolveHostIpsAsync(fullname);
-						relevantIps = resolvedIps;
-						if (resolvedIps.Count > 0)
-						{
-							// Comprobar si alguna de las IPs de Cloudflare resueltas está en la lista de bloqueadas
-							bool isBlocked = resolvedIps.Any(ip => blockedIps.Contains(ip));
-							if (isBlocked)
-							{
-								// Hay bloqueo activo: guardar IPs en caché antes de desactivar el proxy para exponer la IP de origen
-								IpCacheService.SetIps(fullname, resolvedIps);
-								desiredProxy = false;
-								anyDomainBlocked = true;
-								statusLine = $"🔴 Estado: BLOQUEADO (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.";
-							}
-							else
-							{
-								// No hay bloqueo: asegurar que la caché esté limpia y mantener el proxy activado
-								IpCacheService.RemoveIps(fullname);
-								desiredProxy = true;
-								statusLine = $"✅ Estado: no bloqueado (IPs CF: {string.Join(", ", resolvedIps)}). Estado proxy deseado: ACTIVAR.";
-							}
-						}
-						else
-						{
-							// Si falló la resolución DNS, conservar el estado actual para evitar cambios involuntarios
-							statusLine = $"⚠️ No se pudieron resolver IPs por DNS para {fullname}, se mantendrá el estado actual.";
-							desiredProxy = currentProxied;
-						}
-					}
-					else
-					{
-						// ESCENARIO 2: El proxy está desactivado (nube gris).
-						// El DNS público resolvería a la IP de origen, por lo que consultamos las IPs de Cloudflare recordadas en la caché.
-						var cachedIps = IpCacheService.GetIps(fullname);
-						if (cachedIps != null && cachedIps.Count > 0)
-						{
-							relevantIps = cachedIps;
-
-							// Comprobar si las IPs de Cloudflare que le corresponden a este dominio siguen bloqueadas
-							bool isBlocked = cachedIps.Any(ip => blockedIps.Contains(ip));
-							if (isBlocked)
-							{
-								// El partido sigue y las IPs continúan bloqueadas: mantener proxy desactivado
-								desiredProxy = false;
-								anyDomainBlocked = true;
-								statusLine = $"🔴 Estado: BLOQUEO ACTIVO en Cloudflare (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: DESACTIVAR.";
-							}
-							else
-							{
-								// El partido finalizó y las IPs están libres: reactivar el proxy de Cloudflare
-								desiredProxy = true;
-								statusLine = $"✅ Estado: Cloudflare libre de bloqueos (IPs CF: {string.Join(", ", cachedIps)}). Estado proxy deseado: ACTIVAR.";
-							}
-						}
-						else
-						{
-							// Si es un arranque en frío sin historial en caché, resolver el dominio por DNS
-							var resolvedIps = await DnsResolverService.ResolveHostIpsAsync(fullname);
-							relevantIps = resolvedIps;
-							bool isBlocked = resolvedIps.Count > 0 && resolvedIps.Any(ip => blockedIps.Contains(ip));
-							if (isBlocked)
-							{
-								desiredProxy = false;
-								anyDomainBlocked = true;
-								statusLine = $"🔴 Estado: BLOQUEADO (IPs: {string.Join(", ", resolvedIps)}). Estado proxy deseado: DESACTIVAR.";
-							}
-							else
-							{
-								desiredProxy = true;
-								statusLine = $"✅ Estado: no bloqueado. Estado proxy deseado: ACTIVAR.";
-							}
-						}
-					}
-
-					// Si corresponde mostrar detalles completos, imprimir la línea de estado calculada
-					if (showCycleDetails && !string.IsNullOrEmpty(statusLine))
-					{
-						Console.WriteLine($"   ├─── {statusLine}");
-					}
-
-					// Aplicar la actualización en Cloudflare si el estado deseado difiere del actual
-					try
-					{
-						string proxyEmoji = desiredProxy ? "🔒 ON" : "🔓 OFF";
-						string currentProxyEmoji = currentRecord.proxied ? "🔒 ON" : "🔓 OFF";
-
-						bool updated = await CloudflareService.ApplyDnsRecordUpdateAsync(dom.name, record, type, currentRecord, desiredProxy, cfApiToken, dom.CfZoneId);
-
-						if (updated)
-						{
-							// Si se reactivó el proxy con éxito, eliminar las IPs de la caché
-							if (desiredProxy)
-							{
-								IpCacheService.RemoveIps(fullname);
-							}
-
-							// Incrementar el contador de cambios realizados en este ciclo
-							cycleChangesCount++;
-
-							// Asegurar que la cabecera y el motivo se muestren en modo filtrado
-							EnsureDomainHeader();
-							if (!showCycleDetails && !string.IsNullOrEmpty(statusLine))
-							{
-								Console.WriteLine($"   ├─── {statusLine}");
-							}
-
-							Console.WriteLine($"   ├─── ✅ Actualizado │ {currentProxyEmoji} → {proxyEmoji} (IP origen: {currentRecord.content})");
-
-							// Registrar el cambio para el lote de alertas consolidado
-							cycleChanges.Add(new DomainChangeInfo
-							{
-								Domain = dom.name,
-								Record = record,
-								Fullname = fullname,
-								RecordType = type,
-								PreviousProxied = currentRecord.proxied,
-								NewProxied = desiredProxy,
-								OriginIp = currentRecord.content,
-								CloudflareIps = relevantIps ?? new List<string>(),
-								Reason = statusLine
-							});
-						}
-						else
-						{
-							if (showCycleDetails)
-							{
-								Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP origen: {currentRecord.content})");
-							}
-						}
-					}
-					catch (Exception ex)
-					{
-						EnsureDomainHeader();
-						Console.WriteLine($"   ├─── ❌ Error al actualizar Cloudflare para {fullname}: {ex.Message}");
-					}
+					RenderDomainResult(domResult, showCycleDetails);
 				}
 
-				// Enviar notificación consolidada si ocurrieron cambios de proxy en el ciclo y hay canales activos
-				if (cycleChanges.Count > 0 && notificationService.HasEnabledProviders)
+				// Renderizar resultados del envío de notificaciones
+				if (cycleResult.Changes.Count > 0 && cycleResult.NotificationResults.Count > 0)
 				{
-					var notificationResults = await notificationService.SendBatchNotificationAsync(cycleChanges);
-					foreach (var res in notificationResults)
+					foreach (var notif in cycleResult.NotificationResults)
 					{
-						if (res.Success)
+						if (notif.Success)
 						{
-							string pluralSuffix = cycleChanges.Count == 1 ? "dominio" : "dominios";
-							Console.WriteLine($"   ├─── 📱 Alerta enviada por {res.ProviderName} ({cycleChanges.Count} {pluralSuffix})");
+							string pluralSuffix = cycleResult.Changes.Count == 1 ? "dominio" : "dominios";
+							Console.WriteLine($"   ├─── 📱 Alerta enviada por {notif.ProviderName} ({cycleResult.Changes.Count} {pluralSuffix})");
 						}
 						else
 						{
-							Console.WriteLine($"   ├─── ⚠️ Error al enviar alerta por {res.ProviderName}: {res.ErrorMessage}");
+							Console.WriteLine($"   ├─── ⚠️ Error al enviar alerta por {notif.ProviderName}: {notif.ErrorMessage}");
 						}
 					}
 				}
 
-				// Actualizar el registro temporal de bloqueo activo
-				if (anyDomainBlocked)
+				// Actualizar el registro temporal del inicio de bloqueo
+				if (cycleResult.AnyDomainBlocked)
 				{
-					// Si es la primera iteración que detecta el bloqueo, fijar la marca de tiempo de inicio
 					blockStartTime ??= DateTime.Now;
 				}
 				else
 				{
-					// Si ya no hay dominios bloqueados, resetear la marca de inicio de bloqueo
 					blockStartTime = null;
 				}
 
-				// Notificar finalización del ciclo si se muestran detalles o si hubo cambios aplicados
-				if (showCycleDetails || cycleChangesCount > 0)
+				// Notificar fin de ciclo si corresponde
+				if (showCycleDetails || cycleResult.Changes.Count > 0)
 				{
 					LogMessage("✅", "Ciclo completado");
 				}
 
-				// Si se ejecutó en modo de ciclo único (-1 o --once), salir del bucle
 				if (runOnce)
 				{
 					break;
 				}
 
-				// Calcular el tiempo de espera hasta la siguiente comprobación
-				int delaySeconds = CalculateNextDelaySeconds(isAdaptive, intervalSeconds, anyDomainBlocked, blockStartTime, out string delayReason);
+				// Calcular tiempo de espera del siguiente ciclo
+				var delay = ProxySyncService.CalculateNextDelay(isAdaptive, config.IntervalSeconds, cycleResult.AnyDomainBlocked, blockStartTime);
 
-				// Mostrar el mensaje con el intervalo y motivo en modo detallado o si la espera supera el intervalo predeterminado
-				if (showCycleDetails || delaySeconds > intervalSeconds)
+				if (showCycleDetails || delay.DelaySeconds > config.IntervalSeconds)
 				{
-					// Formatear el tiempo de espera en formato estándar hh:mm:ss
-					TimeSpan waitSpan = TimeSpan.FromSeconds(delaySeconds);
+					TimeSpan waitSpan = TimeSpan.FromSeconds(delay.DelaySeconds);
 					string formattedTime = $"{(int)waitSpan.TotalHours:D2}:{waitSpan.Minutes:D2}:{waitSpan.Seconds:D2}";
-
-					LogMessage("⏳", $"Esperando {formattedTime} ({delaySeconds}s) antes de volver a comprobar │ {delayReason}");
+					LogMessage("⏳", $"Esperando {formattedTime} ({delay.DelaySeconds}s) antes de volver a comprobar │ {delay.Reason}");
 				}
 
-				// Marcar que el primer ciclo ha concluido
 				isFirstRun = false;
-
-				await Task.Delay(delaySeconds * 1000);
+				await Task.Delay(delay.DelaySeconds * 1000);
 			}
 		}
 
 		/// <summary>
-		/// Calcula el número de segundos de espera para el siguiente ciclo según la hora y el estado de bloqueo.
+		/// Renderiza en consola el resultado del procesamiento de un dominio respetando el formato jerárquico y emojis.
 		/// </summary>
-		/// <remarks>
-		/// Aplica una optimización dinámica para reducir comprobaciones innecesarias:
-		/// 1. Si no hay bloqueo y es franja valle (01:00 - 14:00): pausa directa hasta las 14:00 (no hay partidos antes de las 14:00).
-		/// 2. Si no hay bloqueo y es franja activa (14:00 - 01:00): espera el intervalo base configurado (ej. 300 s).
-		/// 3. Si hay bloqueo activo: como los partidos duran más de 105 minutos y la web sigue operativa directamente,
-		///    aplica una pausa inicial de 100 minutos (6000 s) y posteriormente vuelve al intervalo base para reactivar el proxy.
-		/// </remarks>
-		/// <param name="isAdaptive">Indica si el modo adaptativo está activado.</param>
-		/// <param name="baseIntervalSeconds">Intervalo base configurado en segundos.</param>
-		/// <param name="isBlocked">Indica si hay al menos un dominio bloqueado activamente.</param>
-		/// <param name="blockStartTime">Momento en el que se inició el bloqueo activo, o null si no hay bloqueo.</param>
-		/// <param name="reason">Motivo explicativo del cálculo para los mensajes de log.</param>
-		/// <returns>Segundos a esperar antes del siguiente ciclo.</returns>
-		static int CalculateNextDelaySeconds(bool isAdaptive, int baseIntervalSeconds, bool isBlocked, DateTime? blockStartTime, out string reason)
+		/// <param name="domResult">Resultado del dominio a presentar.</param>
+		/// <param name="showFullDetails">Indica si deben mostrarse todos los detalles o solo los cambios/errores.</param>
+		static void RenderDomainResult(DomainSyncResult domResult, bool showFullDetails)
 		{
-			// Si el modo adaptativo no está activo, usar siempre el intervalo base fijo
-			if (!isAdaptive)
+			bool shouldPrint = showFullDetails || domResult.Status == DomainSyncStatus.Updated || domResult.Status == DomainSyncStatus.Error || domResult.Status == DomainSyncStatus.DnsRecordNotFound;
+
+			if (!shouldPrint)
 			{
-				reason = "Intervalo fijo";
-				return baseIntervalSeconds;
+				return;
 			}
 
-			// Caso 1: Hay un bloqueo activo (partido de fútbol en curso)
-			if (isBlocked && blockStartTime.HasValue)
+			Console.WriteLine();
+			Console.WriteLine($"   ├─ 👀 {domResult.Fullname} (tipo: {domResult.RecordType})");
+
+			if (domResult.Status == DomainSyncStatus.DnsRecordNotFound)
 			{
-				// Calcular los minutos transcurridos desde que se detectó el inicio del bloqueo
-				double minutesSinceBlock = (DateTime.Now - blockStartTime.Value).TotalMinutes;
-
-				// Si lleva menos de 100 minutos bloqueado, aplicar pausa larga (los partidos duran más de 105 minutos)
-				if (minutesSinceBlock < 100)
-				{
-					reason = "Bloqueo activo (partido en curso, pausa de 100 min)";
-					return 100 * 60; // 6000 segundos
-				}
-
-				// Superados los 100 minutos de bloqueo, volver a intervalo corto para detectar el fin del partido
-				reason = "Bloqueo prolongado (> 100 min, comprobación frecuente)";
-				return baseIntervalSeconds;
+				Console.WriteLine($"   ├─── ⚠️ {domResult.ErrorMessage}, se omitirá.");
+				return;
 			}
 
-			// Caso 2: No hay bloqueo activo. Evaluar la franja horaria local
-			DateTime now = DateTime.Now;
-			int hour = now.Hour;
-
-			// Franja valle: de 01:00 a 14:00 (no hay partidos de fútbol en directo antes de las 14:00)
-			if (hour >= 1 && hour < 14)
+			if (domResult.Status == DomainSyncStatus.Error)
 			{
-				// Calcular la hora objetivo de las 14:00 de hoy
-				DateTime targetTime = new DateTime(now.Year, now.Month, now.Day, 14, 0, 0, now.Kind);
-				double secondsUntilTarget = (targetTime - now).TotalSeconds;
-
-				if (secondsUntilTarget > 0)
-				{
-					int waitSeconds = (int)secondsUntilTarget;
-					int waitMinutes = waitSeconds / 60;
-					int waitHours = waitMinutes / 60;
-					reason = $"Franja valle (01:00 - 14:00, pausa directa hasta las 14:00: {waitHours}h {waitMinutes % 60}m)";
-					return Math.Max(waitSeconds, baseIntervalSeconds);
-				}
+				Console.WriteLine($"   ├─── ❌ {domResult.ErrorMessage}");
+				return;
 			}
 
-			// Franja activa: de 14:00 a 01:00 (horario habitual de emisión de partidos)
-			reason = "Franja activa (14:00 - 01:00, comprobación frecuente)";
-			return baseIntervalSeconds;
+			if (!string.IsNullOrEmpty(domResult.StatusLine))
+			{
+				Console.WriteLine($"   ├─── {domResult.StatusLine}");
+			}
+
+			string proxyEmoji = domResult.DesiredProxied ? "🔒 ON" : "🔓 OFF";
+			string prevProxyEmoji = domResult.PreviousProxied ? "🔒 ON" : "🔓 OFF";
+
+			if (domResult.Status == DomainSyncStatus.Updated)
+			{
+				Console.WriteLine($"   ├─── ✅ Actualizado │ {prevProxyEmoji} → {proxyEmoji} (IP origen: {domResult.OriginIp})");
+			}
+			else if (domResult.Status == DomainSyncStatus.NoChange && showFullDetails)
+			{
+				Console.WriteLine($"   ├─── ℹ️ Sin cambios │ Ya está {proxyEmoji} (IP origen: {domResult.OriginIp})");
+			}
 		}
 
 		#region Utilidades de consola
@@ -668,10 +369,7 @@ namespace SiFutbolNoCF
 		/// <param name="message">Texto opcional con el detalle del mensaje.</param>
 		static void LogMessage(string emoji, string level, string message = "")
 		{
-			// Obtener la fecha y hora local actual formateada
 			string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-
-			// Imprimir el mensaje estructurado
 			if (string.IsNullOrEmpty(message))
 			{
 				Console.WriteLine($"[{timestamp}] {emoji} {level}");
@@ -688,7 +386,6 @@ namespace SiFutbolNoCF
 		/// <param name="message">Mensaje a mostrar.</param>
 		static void LogTimestamp(string message)
 		{
-			// Obtener la fecha y hora local actual formateada
 			string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 			Console.WriteLine($"[{timestamp}] {message}");
 		}
@@ -700,13 +397,8 @@ namespace SiFutbolNoCF
 		/// <returns>Verdadero si el texto equivale a true; de lo contrario, falso.</returns>
 		static bool ParseBoolean(string value)
 		{
-			// Si la cadena es nula o vacía, retornar falso
 			if (string.IsNullOrEmpty(value)) return false;
-
-			// Normalizar a minúsculas y sin espacios
 			value = value.Trim().ToLowerInvariant();
-
-			// Evaluar equivalencias comunes de valores afirmativos
 			return value == "true" || value == "1" || value == "on" || value == "yes";
 		}
 		#endregion

@@ -26,11 +26,12 @@ Guía de referencia rápida, contexto de negocio y reglas de actuación obligato
 - **Compilación Multiplataforma**: Generación de binarios autónomos de un solo archivo (*single-file self-contained*) para Windows, Linux y macOS (arquitecturas `x64` y `arm64`).
 
 ### Organización de Carpetas y Archivos Clave
-- [`Program.cs`](Program.cs): Punto de entrada (`SiFutbolNoCF.Program`), procesamiento de argumentos CLI, interfaz en consola y orquestación del bucle principal de monitorización.
-- **`Models/`**: Modelos de datos del dominio y configuración global (`AppSettings`, `DomainConfig`, respuestas de Cloudflare).
+- [`Program.cs`](Program.cs): Punto de entrada (`SiFutbolNoCF.Program`), procesamiento de argumentos CLI, interfaz en consola y renderizado visual jerárquico.
+- **`Models/`**: Modelos de datos del dominio y configuración global (`AppSettings`, `DomainConfig`, respuestas de Cloudflare, `SyncModels`).
   - **`Models/Notifications/`**: Modelos de eventos agrupados por ciclo (`NotificationBatchEvent`, `DomainChangeInfo`, `NotificationResult`) y clases de configuración específicas de cada canal (ej. `TelegramSettings.cs`).
 - **`Services/`**: Servicios de negocio especializados con responsabilidad única (completamente desacoplados de la consola):
-  - Gestión y resolución de configuración, cliente API de Cloudflare, descarga de estado de bloqueos, resolución DNS y persistencia en caché de disco.
+  - `ProxySyncService`: Orquestación y lógica de negocio de sincronización de dominios, detección de bloqueos, gestión de caché y cálculo de intervalos adaptativos.
+  - Gestión y resolución de configuración (`ConfigurationManager`), cliente API de Cloudflare (`CloudflareService`), descarga de estado de bloqueos (`FootballStatusService`), resolución DNS (`DnsResolverService`) y persistencia en caché de disco (`IpCacheService`).
   - **`Services/Notifications/`**: Arquitectura de notificaciones: interfaz `INotificationProvider`, implementaciones de canal (ej. `TelegramNotificationProvider`) y la fachada `NotificationService`.
 - **Scripts y Configuración**:
   - [`build.bat`](build.bat) y [`build.sh`](build.sh): Scripts para compilación y empaquetado desatendido hacia `./build/SiFutbolNoCF_<plataforma>`.

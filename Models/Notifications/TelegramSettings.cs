@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using SiFutbolNoCF.Services;
 
 namespace SiFutbolNoCF.Models.Notifications
 {
@@ -90,10 +91,8 @@ namespace SiFutbolNoCF.Models.Notifications
 
 			if (!string.IsNullOrEmpty(envEnabled))
 			{
-				settings.Enabled = !envEnabled.Trim().Equals("false", StringComparison.OrdinalIgnoreCase) &&
-				                   !envEnabled.Trim().Equals("0", StringComparison.OrdinalIgnoreCase) &&
-				                   !envEnabled.Trim().Equals("no", StringComparison.OrdinalIgnoreCase) &&
-				                   !envEnabled.Trim().Equals("off", StringComparison.OrdinalIgnoreCase);
+				// Habilitar salvo que el usuario indique un valor falso explícito
+				settings.Enabled = !ConfigurationManager.EsFalso(envEnabled);
 			}
 			else if (!settings.Enabled.HasValue)
 			{
@@ -108,11 +107,8 @@ namespace SiFutbolNoCF.Models.Notifications
 
 			if (!string.IsNullOrEmpty(envSilent))
 			{
-				// Asignar verdadero o falso según el valor en la variable de entorno
-				settings.Silent = !envSilent.Trim().Equals("false", StringComparison.OrdinalIgnoreCase) &&
-				                  !envSilent.Trim().Equals("0", StringComparison.OrdinalIgnoreCase) &&
-				                  !envSilent.Trim().Equals("no", StringComparison.OrdinalIgnoreCase) &&
-				                  !envSilent.Trim().Equals("off", StringComparison.OrdinalIgnoreCase);
+				// Activar silencio salvo que el usuario indique un valor falso explícito
+				settings.Silent = !ConfigurationManager.EsFalso(envSilent);
 			}
 			else if (!settings.Silent.HasValue)
 			{

@@ -397,9 +397,8 @@ namespace SiFutbolNoCF
 		/// <returns>Verdadero si el texto equivale a true; de lo contrario, falso.</returns>
 		static bool ParseBoolean(string value)
 		{
-			if (string.IsNullOrEmpty(value)) return false;
-			value = value.Trim().ToLowerInvariant();
-			return value == "true" || value == "1" || value == "on" || value == "yes";
+			// Delegar la evaluación booleana en el método común centralizado
+			return ConfigurationManager.EsVerdadero(value);
 		}
 		#endregion
 	}

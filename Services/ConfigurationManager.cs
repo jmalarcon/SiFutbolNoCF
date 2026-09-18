@@ -25,6 +25,18 @@ namespace SiFutbolNoCF.Services
 		private const string TokenPlaceholder = "TU_CLOUDFLARE_API_TOKEN";
 		private const string ZonePlaceholder = "TU_CLOUDFLARE_ZONE_ID";
 
+		// Conjunto de cadenas que representan valores booleanos falsos
+		private static readonly HashSet<string> ValoresFalsos = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+		{
+			"false", "0", "no", "off"
+		};
+
+		// Conjunto de cadenas que representan valores booleanos verdaderos
+		private static readonly HashSet<string> ValoresVerdaderos = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+		{
+			"true", "1", "yes", "on"
+		};
+
 		/// <summary>
 		/// Carga la configuración combinada aplicando la precedencia establecida y limpiando placeholders temporales.
 		/// </summary>
@@ -131,11 +143,8 @@ namespace SiFutbolNoCF.Services
 			}
 			else
 			{
-				// Evaluar si el usuario desactivó explícitamente los intervalos adaptativos
-				finalConfig.AdaptiveInterval = !adaptiveStr.Trim().Equals("false", StringComparison.OrdinalIgnoreCase)
-				                               && !adaptiveStr.Trim().Equals("0", StringComparison.OrdinalIgnoreCase)
-				                               && !adaptiveStr.Trim().Equals("no", StringComparison.OrdinalIgnoreCase)
-				                               && !adaptiveStr.Trim().Equals("off", StringComparison.OrdinalIgnoreCase);
+				// Evaluar si el usuario desactivó los intervalos adaptativos
+				finalConfig.AdaptiveInterval = !EsFalso(adaptiveStr);
 			}
 
 			// Resolver el nivel de verbosidad de logs (Local > Base > VERBOSITY)
@@ -241,6 +250,28 @@ namespace SiFutbolNoCF.Services
 
 			// No se encontró ningún valor válido
 			return null;
+		}
+
+		/// <summary>
+		/// Determina si una cadena equivale a un valor booleano falso (false, 0, no, off).
+		/// </summary>
+		/// <param name="valor">Texto a comprobar.</param>
+		/// <returns>True si el texto coincide con un valor falso; de lo contrario, false.</returns>
+		public static bool EsFalso(string valor)
+		{
+			// Comprobar si la cadena no es nula ni vacía y está contenida en el conjunto de falsos
+			return !string.IsNullOrWhiteSpace(valor) && ValoresFalsos.Contains(valor.Trim());
+		}
+
+		/// <summary>
+		/// Determina si una cadena equivale a un valor booleano verdadero (true, 1, yes, on).
+		/// </summary>
+		/// <param name="valor">Texto a comprobar.</param>
+		/// <returns>True si el texto coincide con un valor verdadero; de lo contrario, false.</returns>
+		public static bool EsVerdadero(string valor)
+		{
+			// Comprobar si la cadena no es nula ni vacía y está contenida en el conjunto de verdaderos
+			return !string.IsNullOrWhiteSpace(valor) && ValoresVerdaderos.Contains(valor.Trim());
 		}
 	}
 }

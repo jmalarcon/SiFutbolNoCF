@@ -34,6 +34,11 @@ namespace SiFutbolNoCF.Models.Notifications
 		public string ChatId { get; set; }
 
 		/// <summary>
+		/// Indica si los mensajes de Telegram se envían en modo silencio (sin sonido en destino).
+		/// </summary>
+		public bool? Silent { get; set; }
+
+		/// <summary>
 		/// Carga y resuelve la configuración de Telegram a partir del bloque JSON y variables de entorno.
 		/// </summary>
 		/// <param name="jsonConfig">Elemento JSON correspondiente a la sección de Telegram, o null.</param>
@@ -57,8 +62,7 @@ namespace SiFutbolNoCF.Models.Notifications
 			}
 
 			// 2. Resolver Token considerando variables de entorno y descartando comodines
-			string envToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
-			                  ?? Environment.GetEnvironmentVariable("TELEGRAMBOTTOKEN");
+			string envToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
 
 			if (!string.IsNullOrEmpty(envToken))
 			{
@@ -70,8 +74,7 @@ namespace SiFutbolNoCF.Models.Notifications
 			}
 
 			// 3. Resolver ChatId considerando variables de entorno y descartando comodines
-			string envChatId = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID")
-			                   ?? Environment.GetEnvironmentVariable("TELEGRAMCHATID");
+			string envChatId = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID");
 
 			if (!string.IsNullOrEmpty(envChatId))
 			{
@@ -83,8 +86,7 @@ namespace SiFutbolNoCF.Models.Notifications
 			}
 
 			// 4. Resolver estado Enabled considerando variables de entorno
-			string envEnabled = Environment.GetEnvironmentVariable("TELEGRAM_ENABLED")
-			                    ?? Environment.GetEnvironmentVariable("TELEGRAMENABLED");
+			string envEnabled = Environment.GetEnvironmentVariable("TELEGRAM_ENABLED");
 
 			if (!string.IsNullOrEmpty(envEnabled))
 			{
@@ -99,6 +101,23 @@ namespace SiFutbolNoCF.Models.Notifications
 				bool hasValidCredentials = !string.IsNullOrWhiteSpace(settings.BotToken) &&
 				                          !string.IsNullOrWhiteSpace(settings.ChatId);
 				settings.Enabled = hasValidCredentials;
+			}
+
+			// 5. Resolver modo silencio considerando variables de entorno
+			string envSilent = Environment.GetEnvironmentVariable("TELEGRAM_SILENT");
+
+			if (!string.IsNullOrEmpty(envSilent))
+			{
+				// Asignar verdadero o falso según el valor en la variable de entorno
+				settings.Silent = !envSilent.Trim().Equals("false", StringComparison.OrdinalIgnoreCase) &&
+				                  !envSilent.Trim().Equals("0", StringComparison.OrdinalIgnoreCase) &&
+				                  !envSilent.Trim().Equals("no", StringComparison.OrdinalIgnoreCase) &&
+				                  !envSilent.Trim().Equals("off", StringComparison.OrdinalIgnoreCase);
+			}
+			else if (!settings.Silent.HasValue)
+			{
+				// Usar false por defecto para emitir alertas con sonido
+				settings.Silent = false;
 			}
 
 			return settings;

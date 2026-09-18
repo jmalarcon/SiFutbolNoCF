@@ -50,6 +50,7 @@ El programa dispone de las siguientes opciones globales establecidas bien en el 
 | `Notifications:Telegram:Enabled`  | Booleano | Habilita o deshabilita el envío de alertas por Telegram.     | `TELEGRAM_ENABLED`   | `false`                                            |
 | `Notifications:Telegram:BotToken` | String   | Token del bot de Telegram facilitado por @BotFather.         | `TELEGRAM_BOT_TOKEN` | `""` (Sin efecto)                                  |
 | `Notifications:Telegram:ChatId`   | String   | Identificador numérico del chat de Telegram destino.         | `TELEGRAM_CHAT_ID`   | `""` (Sin efecto)                                  |
+| `Notifications:Telegram:Silent`   | Booleano | Envía los mensajes a Telegram en modo silencio (sin sonido en destino). | `TELEGRAM_SILENT`    | `false`                                            |
 | `Domains`                         | Lista    | Array de objetos de dominios a monitorear y conmutar.        | *(Solo en JSON)*     | `[]`                                               |
 
 
@@ -76,7 +77,8 @@ Los dominios se configuran **siempre** en `appsettings.json` o `appsettings.loca
     "Telegram": {
       "Enabled": false,
       "BotToken": "TU_TELEGRAM_BOT_TOKEN",
-      "ChatId": "TU_TELEGRAM_CHAT_ID"
+      "ChatId": "TU_TELEGRAM_CHAT_ID",
+      "Silent": false
     }
   },
   "Domains": [
@@ -220,7 +222,7 @@ Si deseas recibir alertas inmediatas en tu teléfono móvil cada vez que la apli
        }
      }
      ```
-   - O define las variables de entorno `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`.
+   - O define las variables de entorno `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (y opcionalmente `TELEGRAM_SILENT=true` para notificaciones silenciosas).
 
 Recibirás notificaciones instantáneas como estas:
 
@@ -312,6 +314,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           #OPCIONAL
+          #TELEGRAM_SILENT: "true"
           STATUS_URL: "https://hayahora.futbol/estado/data.json"
 ```
 

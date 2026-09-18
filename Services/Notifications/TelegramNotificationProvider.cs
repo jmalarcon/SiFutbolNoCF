@@ -90,7 +90,9 @@ namespace SiFutbolNoCF.Services.Notifications
 					chat_id = _settings.ChatId,
 					text = messageText,
 					parse_mode = "HTML",
-					disable_web_page_preview = true
+					disable_web_page_preview = true,
+					// Activar modo silencioso en Telegram si se configuró en las opciones
+					disable_notification = _settings.Silent == true
 				};
 
 				// Serializar el payload a JSON

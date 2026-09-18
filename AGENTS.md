@@ -72,7 +72,7 @@ Para extender el sistema con nuevos canales (ej. Discord, Email, Slack, Webhooks
 La aplicación carga los archivos JSON directamente desde su directorio base de ejecución (`AppDomain.CurrentDomain.BaseDirectory`), resolviendo sus valores evaluando las fuentes en este orden estricto de prioridad:
 1. `appsettings.local.json` (fichero local de desarrollo, excluido de Git y configurado en `.csproj` para copiarse al directorio de salida solo en compilaciones `Debug` y nunca al publicar).
 2. `appsettings.json` (fichero de configuración base distribuible).
-3. Variables de Entorno (`CF_API_TOKEN`, `STATUS_URL`, `INTERVAL_SECONDS`, `ADAPTIVE_INTERVAL`, `VERBOSITY`, `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
+3. Variables de Entorno (`CF_API_TOKEN`, `STATUS_URL`, `INTERVAL_SECONDS`, `ADAPTIVE_INTERVAL`, `VERBOSITY`, `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_SILENT`).
 
 ---
 

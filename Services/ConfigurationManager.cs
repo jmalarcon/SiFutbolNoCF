@@ -230,10 +230,8 @@ namespace SiFutbolNoCF.Services
 				return baseVal;
 			}
 
-			// 3. Tercera prioridad: Variables de entorno del sistema (buscando nombre estándar, sin guiones y en minúsculas)
-			string envVal = Environment.GetEnvironmentVariable(envVarName)
-							?? Environment.GetEnvironmentVariable(envVarName.Replace("_", ""))
-							?? Environment.GetEnvironmentVariable(envVarName.ToLowerInvariant());
+			// 3. Tercera prioridad: Variable de entorno del sistema con el nombre estándar
+			string envVal = Environment.GetEnvironmentVariable(envVarName);
 
 			// Si la variable de entorno existe y no está vacía, devolver su valor
 			if (!string.IsNullOrEmpty(envVal))
